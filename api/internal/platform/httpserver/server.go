@@ -149,6 +149,12 @@ func (s *Server) serveAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveLoginAttempt(w http.ResponseWriter, r *http.Request) {
+	if _, registered := s.routes["POST /api/sessions"]; !registered {
+		handler, _ := s.mux.Handler(r)
+		rewriteMuxError(w, r, handler)
+		return
+	}
+
 	key := s.clientKey(r)
 	if allowed, retryAfter := s.limiter.Peek(key); !allowed {
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSeconds(retryAfter)))

@@ -68,6 +68,37 @@ func postLogin(t *testing.T, handler http.Handler, token, forwardedFor string) *
 	return recorder
 }
 
+func TestLoginGateAnswersTheEnvelopeWhenRouteIsMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mise.db")
+	database, err := db.Open(path)
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	server, err := New(Options{
+		DB:            database,
+		Logger:        discardLogger(),
+		Authenticator: fakeAuthenticator{},
+		PublicOrigin:  loginOrigin,
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	recorder := postLogin(t, server.Handler(), "anything", "")
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", recorder.Code)
+	}
+	var body ErrorBody
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Error != "not_found" {
+		t.Errorf("error = %q, want not_found", body.Error)
+	}
+}
+
 func TestLoginGateCountsOnlyFailedAttempts(t *testing.T) {
 	handler := loginServer(t, Options{}, 3)
 
