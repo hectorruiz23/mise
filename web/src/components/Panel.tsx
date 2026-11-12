@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import { normalize } from '../filters'
 import type { CreateTaskInput, State, Task, View } from '../types'
@@ -9,14 +10,15 @@ import { useProjects } from '../useProjects'
 import { Backlog } from './Backlog'
 import { Board } from './Board'
 import { CreateTask } from './CreateTask'
-import { TaskDetail } from './TaskDetail'
+import { TaskDetail, type ReviewQueue } from './TaskDetail'
 import { ViewTabs } from './Views'
 
-function parseHash(): { view: View; key: string | null } {
+function parseHash(): { view: View; key: string | null; reviewing: boolean } {
   const [rawView, rawKey] = location.hash.replace(/^#/, '').split('/')
+  const reviewing = rawView === 'review'
   const view: View = rawView === 'backlog' ? 'backlog' : 'board'
   const key = rawKey?.trim() ? decodeURIComponent(rawKey.trim()) : null
-  return { view, key }
+  return { view, key, reviewing }
 }
 
 export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
@@ -30,6 +32,8 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [creating, setCreating] = useState(false)
   const [openKey, setOpenKey] = useState<string | null>(() => parseHash().key)
   const openedByUs = useRef(false)
+  const [queue, setQueue] = useState<{ keys: string[]; index: number } | null>(null)
+  const initialReview = useRef(parseHash().reviewing)
   const [createdTask, setCreatedTask] = useState<Task | null>(null)
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
   const [reservedHeight, setReservedHeight] = useState<number | null>(null)
@@ -77,15 +81,91 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
     setOpenKey(null)
   }, [])
 
+  const reviewSnapshot = useCallback(
+    () =>
+      board.tasks
+        .filter(task => task.state === 'review')
+        .sort((a, b) => a.created_at - b.created_at || a.key.localeCompare(b.key))
+        .map(task => task.key),
+    [board.tasks],
+  )
+
+  const startReview = useCallback(() => {
+    const keys = reviewSnapshot()
+    if (keys.length === 0) return
+    setQueue({ keys, index: 0 })
+    location.hash = '#review/' + encodeURIComponent(keys[0])
+  }, [reviewSnapshot])
+
+  const goTo = useCallback(
+    (index: number) => {
+      if (!queue) return
+      const key = queue.keys[index]
+      if (key === undefined) return
+      setQueue({ keys: queue.keys, index })
+      history.replaceState(null, '', '#review/' + encodeURIComponent(key))
+    },
+    [queue],
+  )
+
+  const advance = useCallback(async () => {
+    await board.reload()
+    if (!queue) return
+    if (queue.index + 1 < queue.keys.length) {
+      goTo(queue.index + 1)
+      return
+    }
+    setQueue({ keys: queue.keys, index: queue.keys.length })
+    history.replaceState(null, '', '#review')
+  }, [board.reload, goTo, queue])
+
+  const exitQueue = useCallback(() => {
+    history.replaceState(null, '', '#board')
+    setOpenKey(null)
+    setQueue(null)
+    window.setTimeout(() => document.getElementById('board-review')?.focus(), 0)
+  }, [])
+
   useEffect(() => {
     const onHashChange = () => {
       const next = parseHash()
       navigate(next.view)
       setOpenKey(next.key)
+      if (!next.reviewing) {
+        setQueue(null)
+        return
+      }
+      setQueue(current => {
+        if (current) {
+          const position = next.key ? current.keys.indexOf(next.key) : current.index
+          if (position >= 0 && position !== current.index) return { keys: current.keys, index: position }
+          return current
+        }
+        const keys = reviewSnapshot()
+        if (keys.length === 0) return next.key ? { keys: [next.key], index: 0 } : null
+        const position = next.key ? keys.indexOf(next.key) : 0
+        if (position >= 0) return { keys, index: position }
+        return next.key ? { keys: [next.key], index: 0 } : { keys, index: 0 }
+      })
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
-  }, [navigate])
+  }, [navigate, reviewSnapshot])
+
+  useEffect(() => {
+    if (!initialReview.current || board.board === null) return
+    initialReview.current = false
+    if (queue !== null) return
+    const parsed = parseHash()
+    if (!parsed.reviewing) return
+    const keys = reviewSnapshot()
+    const position = parsed.key ? keys.indexOf(parsed.key) : 0
+    if (position >= 0) {
+      setQueue({ keys, index: position })
+      return
+    }
+    if (parsed.key) setQueue({ keys: [parsed.key], index: 0 })
+  }, [board.board, queue, reviewSnapshot])
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000)
@@ -210,6 +290,21 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
     }
   }
 
+  const sheetKey = queue ? queue.keys[queue.index] : openKey
+  const queueEmpty = queue !== null && queue.index >= queue.keys.length
+  const reviewQueue: ReviewQueue | undefined = queue
+    ? {
+        position: queue.index + 1,
+        total: queue.keys.length,
+        canPrev: queue.index > 0,
+        canNext: queue.index < queue.keys.length - 1,
+        onPrev: () => goTo(queue.index - 1),
+        onNext: () => goTo(queue.index + 1),
+        onExit: exitQueue,
+        onApproved: advance,
+      }
+    : undefined
+
   return (
     <main className="contenedor principal" id="panel" tabIndex={-1}>
       <a
@@ -326,6 +421,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
               filtered={filtered}
               onOpen={openCard}
               onClearFilters={clearFilters}
+              onStartReview={startReview}
             />
           ) : (
             <p
@@ -363,17 +459,67 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
         </div>
       </div>
 
-      {openKey && (
+      {queueEmpty ? (
+        <EmptyQueue onClose={exitQueue} />
+      ) : sheetKey ? (
         <TaskDetail
-          key={openKey}
-          taskKey={openKey}
+          key={sheetKey}
+          taskKey={sheetKey}
           now={now}
-          onClose={closeCard}
+          queue={reviewQueue}
+          onClose={queue ? exitQueue : closeCard}
           onMove={move}
           onReloadBoard={activeReload}
           onSessionExpired={onSessionExpired}
         />
-      )}
+      ) : null}
     </main>
+  )
+}
+
+function EmptyQueue({ onClose }: { onClose: () => void }) {
+  const closeButton = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    closeButton.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.stopPropagation()
+      onClose()
+    }
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const root = document.getElementById('root')
+    const hadInert = root?.hasAttribute('inert') ?? false
+    const hadHidden = root?.getAttribute('aria-hidden') ?? null
+    root?.setAttribute('inert', '')
+    root?.setAttribute('aria-hidden', 'true')
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = overflow
+      if (!hadInert) root?.removeAttribute('inert')
+      if (hadHidden === null) root?.removeAttribute('aria-hidden')
+      else if (root) root.setAttribute('aria-hidden', hadHidden)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div className="ficha-capa">
+      <article
+        className="ficha-modal ficha-cola-vacia"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Review queue"
+      >
+        <p className="ficha-cola-cuenta" role="status">
+          Nothing left to review.
+        </p>
+        <button ref={closeButton} type="button" className="primario" onClick={onClose}>
+          Close
+        </button>
+      </article>
+    </div>,
+    document.body,
   )
 }

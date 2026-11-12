@@ -206,7 +206,17 @@ h4 { font-size: 14px; }
 }
 
 .ficha-capa { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: var(--space-12); background: rgba(27, 20, 35, 0.78); }
-.ficha-modal { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(1120px, 100%); height: min(820px, 100%); overflow: hidden; background: var(--paper); color: var(--ink); --focus: var(--ink); color-scheme: light; border-top: 8px solid var(--accent-structure); border-radius: 3px; box-shadow: 0 28px 70px rgba(20, 12, 26, 0.55), 0 0 0 1px var(--rule-light); }
+.ficha-modal { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; width: min(1120px, 100%); height: min(820px, 100%); overflow: hidden; background: var(--paper); color: var(--ink); --focus: var(--ink); color-scheme: light; border-top: 8px solid var(--accent-structure); border-radius: 3px; box-shadow: 0 28px 70px rgba(20, 12, 26, 0.55), 0 0 0 1px var(--rule-light); }
+.ficha-modal:not(:has(> .ficha-cola)) { grid-template-rows: auto minmax(0, 1fr) auto; }
+.ficha-cola { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); padding: var(--space-2) var(--space-4); background: var(--paper); border-bottom: 1px solid var(--rule-light); }
+.ficha-cola-cuenta { font-size: 13px; }
+.ficha-cola-flechas { display: flex; gap: var(--space-1); }
+.ficha-cola-flechas button { min-width: 44px; min-height: 44px; padding: 0 var(--space-2); border: 1px solid var(--ink); border-radius: 2px; background: var(--paper-soft); color: var(--ink); font-size: 20px; line-height: 1; }
+.ficha-cola .primario { min-width: 44px; min-height: 44px; padding-inline: var(--space-3); }
+.ficha-cola .sheet-close { margin-left: auto; }
+.ficha-cola-fuera { color: var(--muted-light); font-size: 12px; }
+.ficha-modal.ficha-cola-vacia { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-4); width: min(420px, 100%); height: auto; min-height: 220px; padding: var(--space-8); text-align: center; }
+.ficha-cola-vacia .primario { min-width: 44px; min-height: 44px; padding-inline: var(--space-4); }
 .ficha-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-2) var(--space-4); background: var(--paper); border-bottom: 1px solid var(--rule-light); }
 .ficha-top-ref { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); min-width: 0; }
 .ficha-key { font: var(--type-data); color: var(--muted-light); white-space: nowrap; }
