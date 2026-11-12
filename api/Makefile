@@ -3,12 +3,10 @@ PANEL_DIR ?= ../web
 DIST_DIR := internal/panel/dist
 BUILD_DIR := build
 
-.PHONY: verify test accept build panel stage-panel build-all build-arm64 release install-hooks
+.PHONY: verify test accept dev build panel stage-panel build-all build-arm64 release install-hooks
 
 REPO_ROOT := $(shell git rev-parse --show-toplevel 2>/dev/null)
 
-# Link the versioned pre-commit guardrail into .git/hooks. What lives inside
-# .git/ is never committed; this file is.
 install-hooks:
 	@test -n "$(REPO_ROOT)" || { echo "install-hooks: run this inside the git repository" >&2; exit 1; }
 	@mkdir -p "$(REPO_ROOT)/.git/hooks"
@@ -24,6 +22,7 @@ verify:
 		exit 1; \
 	fi
 	$(GO) vet ./...
+	$(GO) vet -tags dev ./...
 	$(GO) test ./...
 
 test:
@@ -31,6 +30,9 @@ test:
 
 accept:
 	bash scripts/accept.sh
+
+dev: panel stage-panel
+	@bash scripts/dev.sh
 
 build:
 	CGO_ENABLED=0 $(GO) build ./...

@@ -24,6 +24,7 @@ type Options struct {
 	LoginLimit    int
 	LoginWindow   time.Duration
 	TrustProxy    bool
+	DevPrincipal  *Principal
 }
 
 type Server struct {
@@ -32,6 +33,7 @@ type Server struct {
 	authenticator Authenticator
 	publicOrigin  string
 	trustProxy    bool
+	dev           *Principal
 	limiter       *RateLimiter
 	mux           *http.ServeMux
 	routes        map[string]bool
@@ -61,6 +63,7 @@ func New(opts Options) (*Server, error) {
 		authenticator: opts.Authenticator,
 		publicOrigin:  opts.PublicOrigin,
 		trustProxy:    opts.TrustProxy,
+		dev:           opts.DevPrincipal,
 		limiter:       NewRateLimiter(opts.LoginLimit, opts.LoginWindow),
 		mux:           http.NewServeMux(),
 		routes:        make(map[string]bool),
