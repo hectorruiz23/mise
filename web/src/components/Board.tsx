@@ -13,6 +13,7 @@ export type BoardProps = {
   filtered: boolean
   onOpen: (key: string) => void
   onClearFilters: () => void
+  onStartReview: () => void
 }
 
 export function Board({
@@ -23,6 +24,7 @@ export function Board({
   filtered,
   onOpen,
   onClearFilters,
+  onStartReview,
 }: BoardProps) {
   const [activeState, setActiveState] = useState<State>('ready')
 
@@ -51,7 +53,11 @@ export function Board({
           <button type="button" onClick={() => chooseState('blocked')}>
             <span className="dato">{byState.blocked.length}</span> blocked
           </button>
-          <button type="button" onClick={() => chooseState('review')}>
+          <button
+            type="button"
+            id="board-review"
+            onClick={() => (byState.review.length ? onStartReview() : chooseState('review'))}
+          >
             <span className="dato">{byState.review.length}</span> to review
           </button>
         </div>

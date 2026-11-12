@@ -12,9 +12,21 @@ import { Movements } from './Movements'
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+export type ReviewQueue = {
+  position: number
+  total: number
+  canPrev: boolean
+  canNext: boolean
+  onPrev: () => void
+  onNext: () => void
+  onExit: () => void
+  onApproved: () => void
+}
+
 export function TaskDetail({
   taskKey,
   now,
+  queue,
   onClose,
   onMove,
   onReloadBoard,
@@ -22,6 +34,7 @@ export function TaskDetail({
 }: {
   taskKey: string
   now: number
+  queue?: ReviewQueue
   onClose: () => void
   onMove: (task: Task, destination: State, reason: string) => Promise<void>
   onReloadBoard: () => Promise<void>
@@ -43,6 +56,10 @@ export function TaskDetail({
   const lastTrigger = useRef<HTMLButtonElement | null>(null)
   const menuOpenRef = useRef(false)
   menuOpenRef.current = menuOpen
+  const queueRef = useRef(queue)
+  queueRef.current = queue
+  const taskRef = useRef<Task | undefined>(undefined)
+  const runMoveRef = useRef<(to: State, why: string) => Promise<void>>(async () => {})
   const generation = useRef(0)
 
   const load = useCallback(
@@ -101,14 +118,29 @@ export function TaskDetail({
   useEffect(() => {
     const onFocus = () => void load(true)
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.stopPropagation()
-      if (menuOpenRef.current) {
-        setMenuOpen(false)
-        lastTrigger.current?.focus()
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        if (menuOpenRef.current) {
+          setMenuOpen(false)
+          lastTrigger.current?.focus()
+          return
+        }
+        onClose()
         return
       }
-      onClose()
+      const currentQueue = queueRef.current
+      if (!currentQueue || menuOpenRef.current) return
+      const target = event.target
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) {
+        return
+      }
+      if (event.key === 'j') {
+        if (currentQueue.canNext) currentQueue.onNext()
+      } else if (event.key === 'k') {
+        if (currentQueue.canPrev) currentQueue.onPrev()
+      } else if ((event.key === 'd' || event.key === 'D') && taskRef.current?.state === 'review') {
+        void runMoveRef.current('done', '')
+      }
     }
     window.addEventListener('focus', onFocus)
     document.addEventListener('keydown', onKey)
@@ -190,7 +222,8 @@ export function TaskDetail({
     try {
       await onMove(task, to, why.trim())
       if (to === 'done') {
-        onClose()
+        if (queue) queue.onApproved()
+        else onClose()
         return
       }
       closeMenu(false)
@@ -214,6 +247,9 @@ export function TaskDetail({
       setMoving(false)
     }
   }
+
+  taskRef.current = task
+  runMoveRef.current = runMove
 
   function choose(state: State) {
     if (!task) return
@@ -351,6 +387,32 @@ export function TaskDetail({
         aria-label={detail ? undefined : 'Card detail'}
         onKeyDown={trapFocus}
       >
+        {queue && (
+          <div className="ficha-cola" role="group" aria-label="Review queue">
+            <p className="ficha-cola-cuenta">
+              Review <span className="dato">{queue.position}</span> of <span className="dato">{queue.total}</span>
+            </p>
+            <span className="ficha-key">{taskKey}</span>
+            <div className="ficha-cola-flechas">
+              <button type="button" onClick={queue.onPrev} disabled={!queue.canPrev} aria-label="Previous card in the queue">
+                ‹
+              </button>
+              <button type="button" onClick={queue.onNext} disabled={!queue.canNext} aria-label="Next card in the queue">
+                ›
+              </button>
+            </div>
+            {task?.state === 'review' ? (
+              <button type="button" className="primario" disabled={moving} onClick={() => void runMove('done', '')}>
+                Done
+              </button>
+            ) : (
+              <span className="ficha-cola-fuera">No longer in review</span>
+            )}
+            <button type="button" className="sheet-close" onClick={queue.onExit}>
+              Leave the queue
+            </button>
+          </div>
+        )}
         <div className="ficha-top">
           <div className="ficha-top-ref">
             <p className="sheet-kicker">Card detail</p>
