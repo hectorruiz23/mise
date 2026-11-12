@@ -1,0 +1,13 @@
+.git
+.github
+**/node_modules
+web/dist
+api/build
+api/internal/panel/dist/*
+!api/internal/panel/dist/.gitkeep
+docs
+web/docs
+*.md
+!README.md
+mcp
+.gitignore

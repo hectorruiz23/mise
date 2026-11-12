@@ -1,0 +1,20 @@
+# Go build output
+api/build/
+
+# Panel dependencies and build output
+node_modules/
+web/node_modules/
+web/dist/
+# Everything make stage-panel copies in; only the placeholder is versioned
+api/internal/panel/dist/*
+!api/internal/panel/dist/.gitkeep
+
+# Local scratch
+__pycache__/
+*.pyc
+
+# Working documents stay out of the tree: a spec lives in the branch or the pull
+# request that carries it, never in main.
+docs/
+web/docs/
+*.local.md

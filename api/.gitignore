@@ -1,0 +1,3 @@
+/build/
+/internal/panel/dist/*
+!/internal/panel/dist/.gitkeep

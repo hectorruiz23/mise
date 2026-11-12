@@ -1,0 +1,14 @@
+services:
+  mise:
+    image: ${MISE_IMAGE:-ghcr.io/hectorruiz23/mise:latest}
+    container_name: mise
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      MISE_DB: /data/mise.db
+      MISE_PUBLIC_ORIGIN: ${MISE_PUBLIC_ORIGIN:?set MISE_PUBLIC_ORIGIN, for example https://mise.example.com}
+      MISE_TRUST_PROXY: ${MISE_TRUST_PROXY:-0}
+      MISE_LOG_LEVEL: ${MISE_LOG_LEVEL:-info}
+    volumes:
+      - ${MISE_DATA:-/srv/mise/data}:/data

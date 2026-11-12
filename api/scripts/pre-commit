@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+if [ "${MISE_SKIP_HOOKS:-0}" = "1" ]; then
+    echo "pre-commit: MISE_SKIP_HOOKS=1, checks skipped" >&2
+    exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "pre-commit: not inside a git work tree; skipping checks" >&2
+    exit 0
+}
+
+branch=$(git symbolic-ref --short -q HEAD || true)
+case "$branch" in
+    main|master)
+        if [ "${MISE_ALLOW_MAIN:-0}" != "1" ]; then
+            echo >&2
+            echo "pre-commit: commit rejected — you are on '$branch', and main/master is not committed by hand." >&2
+            echo "------------------------------------------------------------" >&2
+            echo "Every change lands through a pull request:" >&2
+            echo "    git switch -c <branch-name>     # keep your work here" >&2
+            echo "    git commit -m \"...\"             # then push and open the PR" >&2
+            echo >&2
+            echo "Owner-only escape hatch, once:" >&2
+            echo "    MISE_ALLOW_MAIN=1 git commit ..." >&2
+            exit 1
+        fi
+        echo "pre-commit: MISE_ALLOW_MAIN=1 on '$branch', branch rule skipped" >&2
+        ;;
+esac
+
+GOTOOLCHAIN=${GOTOOLCHAIN:-local}
+export GOTOOLCHAIN
+
+log=$(mktemp "${TMPDIR:-/tmp}/mise-precommit.XXXXXX" 2>/dev/null) \
+    || log=$(mktemp /tmp/mise-precommit.XXXXXX) \
+    || {
+        echo "pre-commit: cannot create a log file; skipping checks" >&2
+        exit 0
+    }
+trap 'rm -f "$log"' EXIT
+
+fail() {
+    echo >&2
+    echo "pre-commit: commit rejected — $1" >&2
+    echo "------------------------------------------------------------" >&2
+    cat "$log" >&2
+    echo "------------------------------------------------------------" >&2
+    echo "Run it by hand:" >&2
+    echo "    $2" >&2
+    echo "To commit anyway (not recommended): git commit --no-verify" >&2
+    exit 1
+}
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+touches_web=0
+if [ -z "$staged" ]; then
+    touches_web=1
+elif printf '%s\n' "$staged" | grep -q '^web/'; then
+    touches_web=1
+fi
+
+if [ -d "$repo_root/api" ]; then
+    if ! command -v go >/dev/null 2>&1; then
+        : >"$log"
+        echo "go is not on PATH." >>"$log"
+        fail "make verify cannot start in api/" \
+             "put Go 1.27.4 or newer on PATH, then cd api && make verify"
+    fi
+    if ! ( cd "$repo_root/api" && make verify ) >"$log" 2>&1; then
+        fail "make verify failed in api/ (gofmt, go vet or go test)" \
+             "cd api && make verify"
+    fi
+fi
+
+if [ "$touches_web" = 1 ] && [ -d "$repo_root/web" ]; then
+    if [ ! -d "$repo_root/web/node_modules" ]; then
+        : >"$log"
+        echo "web/node_modules is missing, so the panel typecheck cannot run." >>"$log"
+        fail "npm run typecheck cannot start in web/" \
+             "cd web && npm ci && npm run typecheck"
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+        : >"$log"
+        echo "npm is not on PATH." >>"$log"
+        fail "npm run typecheck cannot start in web/" \
+             "cd web && npm run typecheck"
+    fi
+    if ! ( cd "$repo_root/web" && npm run typecheck ) >"$log" 2>&1; then
+        fail "npm run typecheck failed in web/ (the index touches web/)" \
+             "cd web && npm run typecheck"
+    fi
+fi
+
+exit 0
