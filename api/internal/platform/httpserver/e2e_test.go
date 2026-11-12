@@ -90,6 +90,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	usersHandler := usershttp.New(usersService, "https://mise.example")
 	server.HandleFunc("GET /api/me", false, usersHandler.Me)
 	server.HandleFunc("GET /api/projects", false, tasksHandler.Projects)
+	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
 	server.HandleFunc("GET /api/board", false, tasksHandler.Board)
 	server.HandleFunc("GET /api/tasks", false, tasksHandler.List)
 	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)

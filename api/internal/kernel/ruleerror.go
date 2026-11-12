@@ -10,6 +10,7 @@ const (
 	CodeStaleVersion         = "stale_version"
 	CodePreconditionRequired = "precondition_required"
 	CodeInvalidInput         = "invalid_input"
+	CodeConflict             = "conflict"
 	CodeNotFound             = "not_found"
 	CodeIdempotencyConflict  = "idempotency_conflict"
 	CodeSignupPending        = "signup_pending"

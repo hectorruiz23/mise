@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import { formatShortDate, isoDate } from '../dates'
 import type { Priority, Size, Task } from '../types'
@@ -60,6 +60,7 @@ export type BacklogProps = {
   onOpen: (key: string) => void
   onClearFilters: () => void
   onReload: () => Promise<void>
+  onProjectCreated: () => Promise<void>
   onNoticeChange: (notice: string) => void
   onSessionExpired: () => void
 }
@@ -71,12 +72,18 @@ export function Backlog({
   onOpen,
   onClearFilters,
   onReload,
+  onProjectCreated,
   onNoticeChange,
   onSessionExpired,
 }: BacklogProps) {
   const [sort, setSort] = useState<BacklogSort>(DEFAULT_SORT)
   const [movingKey, setMovingKey] = useState<string | null>(null)
   const [actionError, setActionError] = useState('')
+  const [showingProjectForm, setShowingProjectForm] = useState(false)
+  const [projectKey, setProjectKey] = useState('')
+  const [projectName, setProjectName] = useState('')
+  const [projectError, setProjectError] = useState('')
+  const [creatingProject, setCreatingProject] = useState(false)
   const focusDone = useRef<string | null>(null)
 
   useEffect(() => {
@@ -173,6 +180,31 @@ export function Backlog({
     }
   }
 
+  async function createProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setCreatingProject(true)
+    setProjectError('')
+
+    try {
+      const project = await api.createProject({ key: projectKey, name: projectName })
+      setShowingProjectForm(false)
+      setProjectKey('')
+      setProjectName('')
+      await onProjectCreated()
+      onNoticeChange(`Project ${project.key} created.`)
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 401) {
+        onSessionExpired()
+        return
+      }
+      setProjectError(
+        caught instanceof ApiError ? caught.message : 'The project could not be created.',
+      )
+    } finally {
+      setCreatingProject(false)
+    }
+  }
+
   return (
     <section className="cuerpo-vista" aria-label="Backlog">
       {actionError && (
@@ -195,9 +227,83 @@ export function Backlog({
             <option value="oldest">Oldest</option>
           </select>
         </div>
+        <button
+          type="button"
+          className="secundario"
+          onClick={() => {
+            setShowingProjectForm(value => !value)
+            setProjectError('')
+          }}
+        >
+          New project
+        </button>
       </div>
 
       <div className="abertura">
+        {showingProjectForm && (
+          <section className="crear" aria-labelledby="create-project-title">
+            <h2 id="create-project-title">New project</h2>
+            <form onSubmit={createProject} noValidate>
+              <label htmlFor="create-project-key">Key</label>
+              <input
+                id="create-project-key"
+                name="key"
+                type="text"
+                required
+                maxLength={16}
+                autoCapitalize="characters"
+                spellCheck={false}
+                value={projectKey}
+                onChange={event => {
+                  setProjectKey(event.target.value.toUpperCase())
+                  setProjectError('')
+                }}
+              />
+              <p className="ayuda">
+                Cards will be numbered {projectKey || 'XX'}-1. The key cannot be renamed once the
+                project exists.
+              </p>
+
+              <label htmlFor="create-project-name">Name</label>
+              <input
+                id="create-project-name"
+                name="name"
+                type="text"
+                required
+                maxLength={80}
+                value={projectName}
+                onChange={event => {
+                  setProjectName(event.target.value)
+                  setProjectError('')
+                }}
+              />
+
+              {projectError && (
+                <p className="aviso error" role="alert">
+                  {projectError}
+                </p>
+              )}
+
+              <div className="crear-actions">
+                <button type="submit" className="primario" disabled={creatingProject}>
+                  {creatingProject ? 'Creating…' : 'Create project'}
+                </button>
+                <button
+                  type="button"
+                  className="secundario"
+                  disabled={creatingProject}
+                  onClick={() => {
+                    setShowingProjectForm(false)
+                    setProjectError('')
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
+
         <div className="lista-backlog">
           {loadedCount === 0 ? (
             <div className="vacio">
