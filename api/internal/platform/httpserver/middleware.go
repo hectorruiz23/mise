@@ -43,6 +43,7 @@ type AuthSource string
 const (
 	AuthSourceBearer AuthSource = "bearer"
 	AuthSourceCookie AuthSource = "cookie"
+	AuthSourceDev    AuthSource = "dev"
 )
 
 type authSource = AuthSource
@@ -50,6 +51,7 @@ type authSource = AuthSource
 const (
 	sourceBearer = AuthSourceBearer
 	sourceCookie = AuthSourceCookie
+	sourceDev    = AuthSourceDev
 )
 
 func PrincipalFrom(ctx context.Context) (Principal, bool) {
@@ -199,6 +201,9 @@ func (s *Server) authenticate(r *http.Request) (Principal, authSource, error) {
 
 	cookie, err := r.Cookie(SessionCookieName)
 	if err != nil || cookie.Value == "" {
+		if s.dev != nil {
+			return *s.dev, sourceDev, nil
+		}
 		return Principal{}, "", unauthorized("credential required")
 	}
 	principal, err := s.authenticator.Session(r.Context(), cookie.Value)

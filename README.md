@@ -49,8 +49,21 @@ the index touches `web/`, the panel typecheck.
 
 ## Run locally
 
-A throwaway database and an origin that matches exactly — with `MISE_PUBLIC_ORIGIN` empty or
-different, every write answers `403`:
+`make dev` is the short version: it compiles a development build, seeds a temporary database with a
+few cards and serves the board on a free port, already logged in as a local dev human. Nothing is
+stored and nothing is needed from you — the database lives in a temporary directory and disappears on
+`Ctrl+C`.
+
+```sh
+cd api && make dev
+```
+
+The development identity only exists in a binary built with `-tags dev`, which is what `make dev` does;
+the image CI publishes has no dev code inside, so `MISE_DEV_USER` cannot switch anything on in
+production. It also refuses to start unless the listener is loopback.
+
+For the plain way — a throwaway database and an origin that matches exactly, since with
+`MISE_PUBLIC_ORIGIN` empty or different every write answers `403`:
 
 ```sh
 cd api && go build -o build/mise ./cmd/mise

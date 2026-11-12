@@ -77,12 +77,18 @@ func run() error {
 	tasksService := tasksapp.New(taskssqlite.New(database), clock)
 	usersService := usersapp.New(userssqlite.New(database), clock)
 
+	devPrincipal := httpserver.DevPrincipalFromEnv()
+	if devPrincipal != nil && !isLoopback(cfg.addr) {
+		return fmt.Errorf("MISE_DEV_USER is set but %s is not a loopback address", cfg.addr)
+	}
+
 	server, err := httpserver.New(httpserver.Options{
 		DB:            database,
 		Logger:        logger,
 		Authenticator: usershttp.NewAuthenticator(usersService),
 		PublicOrigin:  cfg.publicOrigin,
 		TrustProxy:    cfg.trustProxy,
+		DevPrincipal:  devPrincipal,
 	})
 	if err != nil {
 		return err
@@ -197,3 +203,15 @@ func envOr(key, fallback string) string {
 type systemClock struct{}
 
 func (systemClock) Now() int64 { return time.Now().Unix() }
+
+func isLoopback(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
