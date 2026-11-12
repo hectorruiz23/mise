@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -20,6 +21,7 @@ type Repo interface {
 	GetTask(ctx context.Context, key string) (domain.Task, error)
 	ListTasks(ctx context.Context, f Filter) ([]domain.Task, string, error)
 	ListProjects(ctx context.Context) ([]Project, error)
+	CreateProject(ctx context.Context, project Project, now int64) error
 	ListBoardTasks(ctx context.Context, projectKey string) ([]domain.Task, error)
 	UpdateTask(ctx context.Context, t domain.Task, m domain.Movement, expectedVersion int64) error
 	CountDeliveries(ctx context.Context, taskKey string) (int, error)
@@ -38,6 +40,12 @@ type Repo interface {
 }
 
 type Clock interface{ Now() int64 }
+
+type CreateProjectParams struct {
+	Key   string
+	Name  string
+	Actor domain.Actor
+}
 
 type CreateParams struct {
 	ProjectKey     string
@@ -158,6 +166,37 @@ func (s *Service) List(ctx context.Context, f Filter) ([]domain.Task, string, er
 
 func (s *Service) ListProjects(ctx context.Context) ([]Project, error) {
 	return s.repo.ListProjects(ctx)
+}
+
+var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,15}$`)
+
+func (s *Service) CreateProject(ctx context.Context, p CreateProjectParams) (Project, error) {
+	if p.Actor.Kind != domain.Human {
+		return Project{}, &domain.RuleError{
+			Code: domain.CodeForbidden,
+			Msg:  "only a human may create projects",
+		}
+	}
+
+	key := strings.ToUpper(strings.TrimSpace(p.Key))
+	if !projectKeyPattern.MatchString(key) {
+		return Project{}, invalidInput(
+			"key must be 1 to 16 characters, start with a letter and contain only letters and digits")
+	}
+
+	name := strings.TrimSpace(p.Name)
+	if name == "" {
+		return Project{}, invalidInput("name is required")
+	}
+	if utf8.RuneCountInString(name) > 80 {
+		return Project{}, invalidInput("name must be at most 80 characters")
+	}
+
+	project := Project{Key: key, Name: name}
+	if err := s.repo.CreateProject(ctx, project, s.clock.Now()); err != nil {
+		return Project{}, err
+	}
+	return project, nil
 }
 
 func (s *Service) Board(ctx context.Context, projectKey string) (Board, error) {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"mise/api/internal/kernel"
 	"mise/api/internal/tasks/app"
 	"mise/api/internal/tasks/domain"
 )
@@ -244,6 +245,32 @@ func (r *Repo) ListProjects(ctx context.Context) ([]app.Project, error) {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
 	return projects, nil
+}
+
+func (r *Repo) CreateProject(ctx context.Context, project app.Project, now int64) error {
+	return r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
+		var exists int
+		err := conn.QueryRowContext(ctx,
+			`SELECT 1 FROM projects WHERE key = ?`, project.Key).Scan(&exists)
+		switch {
+		case err == nil:
+			return &kernel.RuleError{
+				Code: kernel.CodeConflict,
+				Msg:  fmt.Sprintf("project %s already exists", project.Key),
+			}
+		case errors.Is(err, sql.ErrNoRows):
+		default:
+			return fmt.Errorf("create project %q: check existence: %w", project.Key, err)
+		}
+
+		if _, err := conn.ExecContext(ctx, `
+			INSERT INTO projects (key, name, next_task_number, created_at)
+			VALUES (?, ?, 1, ?)`,
+			project.Key, project.Name, now); err != nil {
+			return fmt.Errorf("create project %q: %w", project.Key, err)
+		}
+		return nil
+	})
 }
 
 func (r *Repo) ListBoardTasks(ctx context.Context, projectKey string) ([]domain.Task, error) {

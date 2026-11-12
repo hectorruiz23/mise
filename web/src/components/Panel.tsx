@@ -164,7 +164,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
 
   const activeError = view === 'board' ? board.error : backlog.error
   const activeReload = view === 'board' ? board.reload : backlog.reload
-  const projects = useProjects(true)
+  const { projects, reload: reloadProjects } = useProjects(true)
 
   const clearFilters = useCallback(() => {
     setSearch('')
@@ -347,6 +347,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
               onOpen={openCard}
               onClearFilters={clearFilters}
               onReload={backlog.reload}
+              onProjectCreated={reloadProjects}
               onNoticeChange={setNotice}
               onSessionExpired={onSessionExpired}
             />

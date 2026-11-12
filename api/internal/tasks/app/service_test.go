@@ -112,6 +112,10 @@ func (r *fakeRepo) ListProjects(_ context.Context) ([]app.Project, error) {
 	return nil, nil
 }
 
+func (r *fakeRepo) CreateProject(_ context.Context, _ app.Project, _ int64) error {
+	return nil
+}
+
 func (r *fakeRepo) ListBoardTasks(_ context.Context, _ string) ([]domain.Task, error) {
 	return nil, nil
 }

@@ -16,5 +16,5 @@ export function useProjects(enabled: boolean) {
     if (enabled) void load()
   }, [enabled, load])
 
-  return projects
+  return { projects, reload: load }
 }

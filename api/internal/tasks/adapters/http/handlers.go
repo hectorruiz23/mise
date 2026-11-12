@@ -225,6 +225,35 @@ func (h *Handler) Projects(w nethttp.ResponseWriter, r *nethttp.Request) {
 	httpserver.WriteJSON(w, nethttp.StatusOK, items)
 }
 
+func (h *Handler) CreateProject(w nethttp.ResponseWriter, r *nethttp.Request) {
+	principal, ok := authenticated(w, r)
+	if !ok {
+		return
+	}
+
+	var body createProjectRequest
+	if err := decodeStrict(r, &body); err != nil {
+		httpserver.WriteError(w, nethttp.StatusBadRequest, kernel.CodeInvalidInput,
+			"invalid JSON body")
+		return
+	}
+
+	project, err := h.service.CreateProject(r.Context(), app.CreateProjectParams{
+		Key:   body.Key,
+		Name:  body.Name,
+		Actor: actorOf(principal),
+	})
+	if err != nil {
+		httpserver.WriteRuleError(w, err)
+		return
+	}
+
+	httpserver.WriteJSON(w, nethttp.StatusCreated, projectJSON{
+		Key:  project.Key,
+		Name: project.Name,
+	})
+}
+
 func (h *Handler) Detail(w nethttp.ResponseWriter, r *nethttp.Request) {
 	if _, ok := authenticated(w, r); !ok {
 		return
@@ -661,6 +690,11 @@ type taskJSON struct {
 }
 
 type projectJSON struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
+}
+
+type createProjectRequest struct {
 	Key  string `json:"key"`
 	Name string `json:"name"`
 }

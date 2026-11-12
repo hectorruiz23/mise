@@ -114,6 +114,9 @@ export const api = {
 
   projects: () => request<Project[]>('/api/projects'),
 
+  createProject: (input: { key: string; name: string }) =>
+    request<Project>('/api/projects', { method: 'POST', body: JSON.stringify(input) }),
+
   board: (project = '') =>
     request<BoardData>(`/api/board${project ? `?project=${encodeURIComponent(project)}` : ''}`),
 

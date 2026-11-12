@@ -46,6 +46,7 @@ func ErrorStatus(code string) int {
 		kernel.CodeSignupPending,
 		kernel.CodeSignupConsumed,
 		kernel.CodeIdempotencyConflict,
+		kernel.CodeConflict,
 		kernel.CodeReasonRequired,
 		kernel.CodeEvidenceRequired,
 		kernel.CodeLeaseRequired:
