@@ -110,6 +110,7 @@ h4 { font-size: 14px; }
   .herramientas input:hover, .herramientas select:hover { background: var(--panel); }
   .detalle select:hover, .detalle textarea:hover { background: var(--paper); }
   .selector-estados button:hover { background: var(--panel-soft); }
+  .delivery-pr:hover { background: var(--panel); }
 }
 @media (min-width: 1280px) { .abertura { border-top-width: 12px; border-left-width: 12px; } }
 @media (min-width: 768px) and (max-width: 1279px) {
@@ -166,7 +167,7 @@ h4 { font-size: 14px; }
 @media (max-width: 359px) {
   .selector-estados { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (pointer: coarse) { button, input, select, summary { min-height: 48px; } }
+@media (pointer: coarse) { button, input, select, summary, .delivery-pr { min-height: 48px; } }
 
 .titulo-acciones { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .access { min-height: calc(100dvh - 64px); display: grid; place-items: center; padding-block: var(--space-8); }
@@ -280,6 +281,10 @@ h4 { font-size: 14px; }
 .delivery-approving { padding: var(--space-3); border: 1px solid var(--rule-light); border-left: 4px solid var(--accent-detail); border-radius: 2px; background: var(--card); }
 .delivery-approving + .delivery { margin-top: var(--space-2); }
 .approving { font-size: 12px; font-weight: 700; }
+.delivery-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-2); }
+.delivery-head .approving { margin: 0; }
+.delivery-pr { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 var(--space-3); border: 1px solid var(--ink); border-radius: 2px; background: var(--ink); color: var(--paper); font-size: 14px; font-weight: 700; line-height: 1; text-decoration: none; white-space: nowrap; }
+.delivery-pr .num { font: 700 13px/1 var(--font-data); font-variant-numeric: tabular-nums; }
 .delivery-summary { margin-top: var(--space-1); font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .delivery-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin-top: var(--space-2); color: var(--muted-light); font-size: 12px; }
 .evidence-list { display: grid; gap: var(--space-1); margin-top: var(--space-1); }

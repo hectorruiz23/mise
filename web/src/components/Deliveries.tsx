@@ -2,6 +2,11 @@ import { formatDateTime, formatRelative, isoDate } from '../dates'
 import type { Delivery, Task } from '../types'
 import { actorLabel } from '../types'
 
+function pullRequestNumber(url: string): string | null {
+  const match = url.match(/\/pull\/(\d+)/)
+  return match ? match[1] : null
+}
+
 export function Deliveries({
   deliveries,
   task,
@@ -31,14 +36,46 @@ export function Deliveries({
         </p>
       ) : (
         <ol className="delivery-list">
-          {ordered.map(delivery => (
+          {ordered.map(delivery => {
+            const prNumber = delivery.pr_url ? pullRequestNumber(delivery.pr_url) : null
+            return (
             <li
               key={delivery.id}
               className={`delivery${delivery.id === approvingId ? ' delivery-approving' : ''}`}
             >
-              {delivery.id === approvingId && (
-                <p className="approving">Newest delivery — this is what you are approving.</p>
-              )}
+              <div className="delivery-head">
+                {delivery.id === approvingId && (
+                  <p className="approving">Newest delivery — this is what you are approving.</p>
+                )}
+                {delivery.pr_url && (
+                  <a
+                    className="delivery-pr"
+                    href={delivery.pr_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={prNumber ? `Pull request ${prNumber}` : 'Pull request'}
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="16"
+                      height="16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="4" cy="3.5" r="1.6" />
+                      <circle cx="4" cy="12.5" r="1.6" />
+                      <circle cx="12" cy="12.5" r="1.6" />
+                      <path d="M4 5.1v5.8" />
+                      <path d="M12 10.9V6.6c0-1.6-1.3-2.9-2.9-2.9H8" />
+                      <path d="M9.2 2.5 7.9 3.7l1.3 1.3" />
+                    </svg>
+                    <span className="num">{prNumber ? `#${prNumber}` : 'PR'}</span>
+                  </a>
+                )}
+              </div>
               <p className="delivery-summary">{delivery.summary}</p>
               <div className="delivery-meta">
                 <span>Delivered by {actorLabel(delivery.actor, delivery.actor_id)}</span>
@@ -50,11 +87,6 @@ export function Deliveries({
                 </span>
                 {delivery.lease_id !== null && (
                   <span className="dato">Lease #{delivery.lease_id}</span>
-                )}
-                {delivery.pr_url && (
-                  <a className="dato" href={delivery.pr_url} target="_blank" rel="noreferrer">
-                    Pull request
-                  </a>
                 )}
               </div>
               {delivery.evidence.length > 0 && (
@@ -68,7 +100,8 @@ export function Deliveries({
                 </>
               )}
             </li>
-          ))}
+            )
+          })}
         </ol>
       )}
     </section>
