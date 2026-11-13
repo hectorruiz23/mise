@@ -191,6 +191,8 @@ def tool_specs() -> list[dict]:
            "summary": {"type": "string", "description": "What you did, in plain language"},
            "evidence": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20,
                         "description": "Command and output, file path, URL, test result"},
+           "pr_url": {"type": "string", "maxLength": 500,
+                      "description": "Optional absolute http(s) link to the pull request behind the work"},
            "lease_id": {"type": "integer", "description": "Omit to let the server use your live lease"}},
           ["key", "summary", "evidence"]),
         t("comment",
@@ -268,6 +270,8 @@ def run_tool(api: Api, name: str, args: dict) -> dict:
             lease_id = _lease_id(api, args["key"])
         body = {"lease_id": int(lease_id), "summary": args["summary"],
                 "evidence": list(args["evidence"])}
+        if args.get("pr_url"):
+            body["pr_url"] = args["pr_url"]
         return _envelope(api.call("POST", f"/api/tasks/{args['key']}/deliveries", body))
 
     if name == "comment":

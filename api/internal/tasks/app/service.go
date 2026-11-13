@@ -443,6 +443,7 @@ func (s *Service) Deliver(
 	leaseID *int64,
 	summary string,
 	evidence []string,
+	prURL *string,
 ) (domain.Task, domain.Delivery, error) {
 	task, err := s.repo.GetTask(ctx, key)
 	if err != nil {
@@ -461,7 +462,7 @@ func (s *Service) Deliver(
 		}
 	}
 
-	next, delivery, movement, err := domain.ApplyDelivery(task, lease, actor, summary, evidence, now)
+	next, delivery, movement, err := domain.ApplyDelivery(task, lease, actor, summary, evidence, prURL, now)
 	if err != nil {
 		return domain.Task{}, domain.Delivery{}, err
 	}

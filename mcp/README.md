@@ -120,7 +120,7 @@ file exists.
 | `acquire_lease` | Take a card: 15 minutes, renewable | yes |
 | `renew_lease` | Extend your lease, does not touch the card version | yes |
 | `release_lease` | Give the card back without delivering | yes |
-| `deliver` | Summary + evidence, moves the card to review | yes |
+| `deliver` | Summary + evidence, optional `pr_url`, moves the card to review | yes |
 | `comment` | Add a comment | yes |
 
 Every write answers with a stable envelope — `{"task": …}`, `{"lease": …}`, `{"delivery": …}`,

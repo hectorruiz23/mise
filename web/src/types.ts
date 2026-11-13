@@ -87,6 +87,7 @@ export type Delivery = {
   lease_id: number | null
   summary: string
   evidence: string[]
+  pr_url: string | null
   created_at: number
   actor_id: number
   actor: Actor

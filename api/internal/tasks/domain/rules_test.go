@@ -410,7 +410,7 @@ func TestApplyDeliveryByHumanWithoutLease(t *testing.T) {
 	task := baseTask(InProgress)
 	evidence := []string{"go test ./...", "commit abc123"}
 
-	next, delivery, movement, err := ApplyDelivery(task, nil, actorOf(Human), "Done and verified", evidence, now)
+	next, delivery, movement, err := ApplyDelivery(task, nil, actorOf(Human), "Done and verified", evidence, nil, now)
 	if err != nil {
 		t.Fatalf("human delivery: %v", err)
 	}
@@ -455,7 +455,7 @@ func TestApplyDeliveryByAgent(t *testing.T) {
 	task := baseTask(InProgress)
 	lease := Lease{ID: 42, TaskKey: task.Key, AgentID: 7, CreatedAt: 1000, ExpiresAt: now + 60}
 
-	next, delivery, _, err := ApplyDelivery(task, &lease, actorOf(Agent), "Ready for review", []string{"proof"}, now)
+	next, delivery, _, err := ApplyDelivery(task, &lease, actorOf(Agent), "Ready for review", []string{"proof"}, nil, now)
 	if err != nil {
 		t.Fatalf("agent delivery: %v", err)
 	}
@@ -505,7 +505,7 @@ func TestApplyDeliveryRejectsExpiredLease(t *testing.T) {
 	task := baseTask(InProgress)
 	lease := Lease{ID: 42, TaskKey: task.Key, AgentID: 7, CreatedAt: 1000, ExpiresAt: now}
 
-	_, _, _, err := ApplyDelivery(task, &lease, actorOf(Agent), "Ready", []string{"proof"}, now)
+	_, _, _, err := ApplyDelivery(task, &lease, actorOf(Agent), "Ready", []string{"proof"}, nil, now)
 	requireCode(t, err, CodeLeaseRequired)
 }
 

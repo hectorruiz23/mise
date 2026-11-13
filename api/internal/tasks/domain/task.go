@@ -86,6 +86,7 @@ type Delivery struct {
 	LeaseID   *int64
 	Summary   string
 	Evidence  []string
+	PRURL     *string
 	CreatedAt int64
 	ActorID   int64
 	Actor     Actor

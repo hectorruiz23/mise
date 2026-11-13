@@ -203,6 +203,7 @@ type deliveryBody struct {
 	LeaseID   *int64     `json:"lease_id"`
 	Summary   string     `json:"summary"`
 	Evidence  []string   `json:"evidence"`
+	PRURL     *string    `json:"pr_url"`
 	CreatedAt int64      `json:"created_at"`
 	ActorID   int64      `json:"actor_id"`
 	Actor     *actorBody `json:"actor"`
