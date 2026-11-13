@@ -546,10 +546,10 @@ func (r *Repo) Deliver(ctx context.Context, t domain.Task, d domain.Delivery, m 
 			return fmt.Errorf("deliver to %q: encode evidence: %w", t.Key, err)
 		}
 		if _, err := conn.ExecContext(ctx, `
-			INSERT INTO deliveries (task_key, lease_id, summary, evidence, created_at, actor_id)
-			VALUES (?, ?, ?, ?, ?, ?)`,
+			INSERT INTO deliveries (task_key, lease_id, summary, evidence, pr_url, created_at, actor_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			d.TaskKey, nullableInt64(d.LeaseID), d.Summary, string(evidence),
-			d.CreatedAt, d.ActorID); err != nil {
+			nullableText(d.PRURL), d.CreatedAt, d.ActorID); err != nil {
 			return fmt.Errorf("deliver to %q: insert delivery: %w", t.Key, err)
 		}
 
@@ -585,7 +585,7 @@ func (r *Repo) ListLeases(ctx context.Context, taskKey string) ([]domain.Lease, 
 
 func (r *Repo) ListDeliveries(ctx context.Context, taskKey string) ([]domain.Delivery, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT d.id, d.task_key, d.lease_id, d.summary, d.evidence, d.created_at,
+		SELECT d.id, d.task_key, d.lease_id, d.summary, d.evidence, d.pr_url, d.created_at,
 		       d.actor_id, u.name, u.kind
 		FROM deliveries d
 		JOIN users u ON u.id = d.actor_id
@@ -878,12 +878,13 @@ func scanDelivery(s scanner) (domain.Delivery, error) {
 		delivery  domain.Delivery
 		leaseID   sql.NullInt64
 		evidence  string
+		prURL     sql.NullString
 		actorName string
 		actorKind string
 	)
 	if err := s.Scan(
 		&delivery.ID, &delivery.TaskKey, &leaseID, &delivery.Summary,
-		&evidence, &delivery.CreatedAt, &delivery.ActorID, &actorName, &actorKind,
+		&evidence, &prURL, &delivery.CreatedAt, &delivery.ActorID, &actorName, &actorKind,
 	); err != nil {
 		return domain.Delivery{}, err
 	}
@@ -895,6 +896,10 @@ func scanDelivery(s scanner) (domain.Delivery, error) {
 	if leaseID.Valid {
 		value := leaseID.Int64
 		delivery.LeaseID = &value
+	}
+	if prURL.Valid {
+		value := prURL.String
+		delivery.PRURL = &value
 	}
 	if err := json.Unmarshal([]byte(evidence), &delivery.Evidence); err != nil {
 		return domain.Delivery{}, fmt.Errorf("decode delivery %d evidence: %w", delivery.ID, err)

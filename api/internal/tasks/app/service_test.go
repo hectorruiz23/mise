@@ -564,7 +564,7 @@ func TestDeliverAgentWithLiveLease(t *testing.T) {
 	service := app.New(repo, fakeClock(1700))
 
 	task, delivery, err := service.Deliver(
-		context.Background(), "MI-1", agent(), int64Ptr(5), "Ready", []string{"go test ./..."})
+		context.Background(), "MI-1", agent(), int64Ptr(5), "Ready", []string{"go test ./..."}, nil)
 	if err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
@@ -604,7 +604,7 @@ func TestDeliverAgentRequiresLiveOwnedLease(t *testing.T) {
 			service := app.New(repo, fakeClock(1700))
 
 			_, _, err := service.Deliver(
-				context.Background(), "MI-1", agent(), tt.leaseID, "Ready", []string{"proof"})
+				context.Background(), "MI-1", agent(), tt.leaseID, "Ready", []string{"proof"}, nil)
 			if code := ruleCode(t, err); code != domain.CodeLeaseRequired {
 				t.Fatalf("code = %q, want %q", code, domain.CodeLeaseRequired)
 			}
@@ -622,7 +622,7 @@ func TestDeliverHumanWithoutLease(t *testing.T) {
 	service := app.New(repo, fakeClock(1700))
 
 	task, delivery, err := service.Deliver(
-		context.Background(), "MI-1", human(), nil, "Done by hand", []string{"manual check"})
+		context.Background(), "MI-1", human(), nil, "Done by hand", []string{"manual check"}, nil)
 	if err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}

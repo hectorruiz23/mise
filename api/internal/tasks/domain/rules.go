@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -192,8 +193,12 @@ func ValidateDelivery(t Task, lease *Lease, actor Actor, summary string, evidenc
 	return nil
 }
 
-func ApplyDelivery(t Task, lease *Lease, actor Actor, summary string, evidence []string, now int64) (Task, Delivery, Movement, error) {
+func ApplyDelivery(t Task, lease *Lease, actor Actor, summary string, evidence []string, prURL *string, now int64) (Task, Delivery, Movement, error) {
 	if err := ValidateDelivery(t, lease, actor, summary, evidence); err != nil {
+		return Task{}, Delivery{}, Movement{}, err
+	}
+	normalizedPRURL, err := NormalizePRURL(prURL)
+	if err != nil {
 		return Task{}, Delivery{}, Movement{}, err
 	}
 	if actor.Kind == Agent && !IsLive(*lease, now) {
@@ -211,6 +216,7 @@ func ApplyDelivery(t Task, lease *Lease, actor Actor, summary string, evidence [
 		TaskKey:   t.Key,
 		Summary:   summary,
 		Evidence:  slices.Clone(evidence),
+		PRURL:     normalizedPRURL,
 		CreatedAt: now,
 		ActorID:   actor.ID,
 	}
@@ -242,6 +248,24 @@ func ValidateEvidence(evidence []string) error {
 		}
 	}
 	return nil
+}
+
+func NormalizePRURL(raw *string) (*string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	value := strings.TrimSpace(*raw)
+	if value == "" {
+		return nil, nil
+	}
+	if utf8.RuneCountInString(value) > 500 {
+		return nil, invalidInput("pr_url must be an absolute http(s) URL of at most 500 characters")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return nil, invalidInput("pr_url must be an absolute http(s) URL of at most 500 characters")
+	}
+	return &value, nil
 }
 
 func ValidateComment(body string) error {

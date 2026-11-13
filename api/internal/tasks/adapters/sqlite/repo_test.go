@@ -810,7 +810,7 @@ func TestDeliverByAgent(t *testing.T) {
 
 	evidence := []string{"go test ./...", "commit abc123"}
 	task, delivery, err := service.Deliver(
-		context.Background(), created.Key, agent(), &lease.ID, "Ready for review", evidence)
+		context.Background(), created.Key, agent(), &lease.ID, "Ready for review", evidence, nil)
 	if err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
@@ -872,7 +872,7 @@ func TestDeliverRejectionsWriteNothing(t *testing.T) {
 
 		clock.now = testNow + 901
 		_, _, err = service.Deliver(
-			context.Background(), created.Key, agent(), &lease.ID, "Late", []string{"proof"})
+			context.Background(), created.Key, agent(), &lease.ID, "Late", []string{"proof"}, nil)
 		wantRuleCode(t, err, domain.CodeLeaseRequired)
 
 		assertTaskVersion(t, database, created.Key, 3)
@@ -898,7 +898,7 @@ func TestDeliverRejectionsWriteNothing(t *testing.T) {
 		}
 
 		_, _, err = service.Deliver(
-			context.Background(), second.Key, agent(), &lease.ID, "Wrong task", []string{"proof"})
+			context.Background(), second.Key, agent(), &lease.ID, "Wrong task", []string{"proof"}, nil)
 		wantRuleCode(t, err, domain.CodeLeaseRequired)
 
 		assertTaskVersion(t, database, second.Key, 2)
@@ -921,7 +921,7 @@ func TestHumanDeliverWithoutLease(t *testing.T) {
 	}
 
 	task, delivery, err := service.Deliver(
-		context.Background(), created.Key, human(), nil, "Done by hand", []string{"manual check"})
+		context.Background(), created.Key, human(), nil, "Done by hand", []string{"manual check"}, nil)
 	if err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
@@ -976,7 +976,7 @@ func TestMoveToReadyAndDoneClosesLease(t *testing.T) {
 		t.Fatalf("second acquire: %v", err)
 	}
 	if _, _, err := service.Deliver(
-		context.Background(), created.Key, agent(), &second.ID, "Ready", []string{"proof"}); err != nil {
+		context.Background(), created.Key, agent(), &second.ID, "Ready", []string{"proof"}, nil); err != nil {
 		t.Fatalf("deliver: %v", err)
 	}
 
@@ -1022,7 +1022,7 @@ func TestListLeasesAndDeliveriesInInsertionOrder(t *testing.T) {
 	}
 
 	if _, _, err := service.Deliver(
-		context.Background(), created.Key, otherAgent(), &second.ID, "First", []string{"one"}); err != nil {
+		context.Background(), created.Key, otherAgent(), &second.ID, "First", []string{"one"}, nil); err != nil {
 		t.Fatalf("first deliver: %v", err)
 	}
 	if _, err := service.Move(
@@ -1030,7 +1030,7 @@ func TestListLeasesAndDeliveriesInInsertionOrder(t *testing.T) {
 		t.Fatalf("move back to in_progress: %v", err)
 	}
 	if _, _, err := service.Deliver(
-		context.Background(), created.Key, human(), nil, "Second", []string{"two"}); err != nil {
+		context.Background(), created.Key, human(), nil, "Second", []string{"two"}, nil); err != nil {
 		t.Fatalf("second deliver: %v", err)
 	}
 

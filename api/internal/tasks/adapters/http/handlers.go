@@ -396,7 +396,7 @@ func (h *Handler) CreateDelivery(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 
 	task, delivery, err := h.service.Deliver(r.Context(), r.PathValue("key"),
-		actorOf(principal), body.LeaseID, body.Summary, body.Evidence)
+		actorOf(principal), body.LeaseID, body.Summary, body.Evidence, body.PRURL)
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -735,6 +735,7 @@ type deliveryJSON struct {
 	LeaseID   *int64    `json:"lease_id"`
 	Summary   string    `json:"summary"`
 	Evidence  []string  `json:"evidence"`
+	PRURL     *string   `json:"pr_url"`
 	CreatedAt int64     `json:"created_at"`
 	ActorID   int64     `json:"actor_id"`
 	Actor     actorJSON `json:"actor"`
@@ -759,6 +760,7 @@ type deliveryRequest struct {
 	LeaseID  *int64   `json:"lease_id"`
 	Summary  string   `json:"summary"`
 	Evidence []string `json:"evidence"`
+	PRURL    *string  `json:"pr_url"`
 }
 
 type commentRequest struct {
@@ -823,6 +825,7 @@ func deliveryOf(delivery domain.Delivery) deliveryJSON {
 		LeaseID:   delivery.LeaseID,
 		Summary:   delivery.Summary,
 		Evidence:  delivery.Evidence,
+		PRURL:     delivery.PRURL,
 		CreatedAt: delivery.CreatedAt,
 		ActorID:   delivery.ActorID,
 		Actor:     actorOfDomain(delivery.Actor),

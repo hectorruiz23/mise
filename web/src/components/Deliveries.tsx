@@ -51,6 +51,11 @@ export function Deliveries({
                 {delivery.lease_id !== null && (
                   <span className="dato">Lease #{delivery.lease_id}</span>
                 )}
+                {delivery.pr_url && (
+                  <a className="dato" href={delivery.pr_url} target="_blank" rel="noreferrer">
+                    Pull request
+                  </a>
+                )}
               </div>
               {delivery.evidence.length > 0 && (
                 <>
