@@ -61,6 +61,15 @@ func TestDeliveryPRURLIsStoredAndReadBack(t *testing.T) {
 	}
 }
 
+func prURLLength(n int) string {
+	const prefix = "https://example.com/"
+	value := prefix + strings.Repeat("a", n-len(prefix))
+	if len(value) != n {
+		panic("prURLLength: bad length")
+	}
+	return value
+}
+
 func TestDeliveryPRURLValidation(t *testing.T) {
 	env := newMutationEnv(t)
 	task := deliverableTask(t, env, "Bad PR link")
@@ -73,7 +82,7 @@ func TestDeliveryPRURLValidation(t *testing.T) {
 		{name: "other scheme", value: "ftp://example.com/pull/42"},
 		{name: "javascript scheme", value: "javascript:alert(1)"},
 		{name: "no host", value: "https:///pull/42"},
-		{name: "too long", value: "https://example.com/" + strings.Repeat("a", 500)},
+		{name: "one over the limit", value: prURLLength(501)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			payload, err := json.Marshal(map[string]any{
@@ -105,6 +114,30 @@ func TestDeliveryPRURLValidation(t *testing.T) {
 	}
 	if deliveries != 0 {
 		t.Fatalf("deliveries = %d, want 0", deliveries)
+	}
+}
+
+func TestDeliveryPRURLAtTheLimitIsAccepted(t *testing.T) {
+	env := newMutationEnv(t)
+	task := deliverableTask(t, env, "Long PR link")
+
+	value := prURLLength(500)
+	payload, err := json.Marshal(map[string]any{
+		"summary":  "At the limit",
+		"evidence": []string{"proof"},
+		"pr_url":   value,
+	})
+	if err != nil {
+		t.Fatalf("encode body: %v", err)
+	}
+	resp := env.request(t, http.MethodPost, "/api/tasks/"+task.Key+"/deliveries",
+		mutAgentToken, string(payload))
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d (%s), want 201", resp.StatusCode, decodeError(t, resp).Detail)
+	}
+	delivered := decodeBody[deliveryResponse](t, resp)
+	if delivered.Delivery.PRURL == nil || *delivered.Delivery.PRURL != value {
+		t.Fatalf("delivery pr_url did not survive at the 500 character limit")
 	}
 }
 
