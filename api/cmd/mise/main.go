@@ -97,7 +97,7 @@ func run() error {
 	tasksHandler := taskshttp.New(tasksService)
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
 	server.HandleFunc("GET /api/me", false, usersHandler.Me)
-	server.HandleFunc("GET /api/publico/tablero", true, tasksHandler.PublicBoard)
+	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
 	server.HandleFunc("GET /api/projects", false, tasksHandler.Projects)
 	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
 	server.HandleFunc("GET /api/board", false, tasksHandler.Board)
