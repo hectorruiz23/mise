@@ -45,7 +45,7 @@ func setTaskState(t *testing.T, env *tasksEnv, key string, version int64, state 
 func publicProjects(t *testing.T, env *tasksEnv) publicBoardBody {
 	t.Helper()
 
-	resp := env.request(t, http.MethodGet, "/api/publico/tablero", "", nil)
+	resp := env.request(t, http.MethodGet, "/api/public/board", "", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("public board status = %d, want 200", resp.StatusCode)
 	}
@@ -102,7 +102,7 @@ func TestPublicBoardReturnsWhitelistedSnapshot(t *testing.T) {
 		t.Fatal("last_active is null on a project with cards")
 	}
 
-	resp := env.request(t, http.MethodGet, "/api/publico/tablero", "", nil)
+	resp := env.request(t, http.MethodGet, "/api/public/board", "", nil)
 	raw, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
