@@ -77,6 +77,7 @@ func newTasksEnv(t *testing.T) *tasksEnv {
 	tasksHandler := taskshttp.New(tasksService)
 	usersHandler := usershttp.New(usersService, testOrigin)
 	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)
+	server.HandleFunc("GET /api/publico/tablero", true, tasksHandler.PublicBoard)
 	server.HandleFunc("GET /api/projects", false, tasksHandler.Projects)
 	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
 	server.HandleFunc("PATCH /api/tasks/{key}", false, tasksHandler.Patch)

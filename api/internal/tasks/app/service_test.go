@@ -112,6 +112,10 @@ func (r *fakeRepo) ListProjects(_ context.Context) ([]app.Project, error) {
 	return nil, nil
 }
 
+func (r *fakeRepo) ListPublicProjects(_ context.Context) ([]app.Project, error) {
+	return nil, nil
+}
+
 func (r *fakeRepo) CreateProject(_ context.Context, _ app.Project, _ int64) error {
 	return nil
 }
@@ -610,6 +614,27 @@ func TestDeliverAgentRequiresLiveOwnedLease(t *testing.T) {
 			}
 			if repo.deliverArgs.called {
 				t.Fatal("Deliver was called without a live owned lease")
+			}
+		})
+	}
+}
+
+func TestEstadoProyecto(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		enCurso  int
+		cerradas int
+		want     string
+	}{
+		{name: "only backlog", enCurso: 0, cerradas: 0, want: "idea"},
+		{name: "ready card", enCurso: 1, cerradas: 0, want: "in_progress"},
+		{name: "blocked card", enCurso: 1, cerradas: 3, want: "in_progress"},
+		{name: "all done", enCurso: 0, cerradas: 2, want: "done"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := app.EstadoProyecto(tt.enCurso, tt.cerradas); got != tt.want {
+				t.Fatalf("EstadoProyecto(%d, %d) = %q, want %q",
+					tt.enCurso, tt.cerradas, got, tt.want)
 			}
 		})
 	}
