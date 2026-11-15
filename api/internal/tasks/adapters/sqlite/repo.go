@@ -226,23 +226,96 @@ func (r *Repo) ListTasks(ctx context.Context, f app.Filter) ([]domain.Task, stri
 }
 
 func (r *Repo) ListProjects(ctx context.Context) ([]app.Project, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT key, name FROM projects ORDER BY rowid`)
+	return r.listProjects(ctx, false)
+}
+
+func (r *Repo) ListPublicProjects(ctx context.Context) ([]app.Project, error) {
+	return r.listProjects(ctx, true)
+}
+
+func (r *Repo) listProjects(ctx context.Context, public bool) ([]app.Project, error) {
+	label := "list projects"
+	query := `
+		SELECT p.key, p.name, p.is_public, p.sort_order, p.description, p.repo_url,
+		       p.demo_url, p.public_state,
+		       COALESCE(t.total, 0), COALESCE(t.cerradas, 0), COALESCE(t.en_curso, 0),
+		       t.ultima
+		FROM projects p
+		LEFT JOIN (
+		    SELECT project_key,
+		           count(*)                                        AS total,
+		           sum(CASE WHEN state = 'done' THEN 1 ELSE 0 END)  AS cerradas,
+		           sum(CASE WHEN state IN ('ready', 'in_progress', 'blocked')
+		                    THEN 1 ELSE 0 END)                      AS en_curso,
+		           max(updated_at)                                  AS ultima
+		    FROM tasks
+		    GROUP BY project_key
+		) t ON t.project_key = p.key`
+	if public {
+		label = "list public projects"
+		query += ` WHERE p.is_public = 1`
+		query += ` ORDER BY p.sort_order, p.key`
+	} else {
+		query += ` ORDER BY p.rowid`
+	}
+
+	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, fmt.Errorf("list projects: %w", err)
+		return nil, fmt.Errorf("%s: %w", label, err)
 	}
 	defer rows.Close()
 
 	projects := make([]app.Project, 0, 3)
 	for rows.Next() {
-		var project app.Project
-		if err := rows.Scan(&project.Key, &project.Name); err != nil {
-			return nil, fmt.Errorf("list projects: scan: %w", err)
+		var (
+			project     app.Project
+			isPublic    int
+			description sql.NullString
+			repoURL     sql.NullString
+			demoURL     sql.NullString
+			publicState sql.NullString
+			total       int
+			cerradas    int
+			enCurso     int
+			lastActive  sql.NullInt64
+		)
+		if err := rows.Scan(
+			&project.Key, &project.Name, &isPublic, &project.SortOrder,
+			&description, &repoURL, &demoURL, &publicState,
+			&total, &cerradas, &enCurso, &lastActive,
+		); err != nil {
+			return nil, fmt.Errorf("%s: scan: %w", label, err)
+		}
+
+		project.IsPublic = isPublic == 1
+		if description.Valid {
+			value := description.String
+			project.Description = &value
+		}
+		if repoURL.Valid {
+			value := repoURL.String
+			project.RepoURL = &value
+		}
+		if demoURL.Valid {
+			value := demoURL.String
+			project.DemoURL = &value
+		}
+		if publicState.Valid {
+			value := publicState.String
+			project.PublicState = &value
+			project.State = value
+		} else {
+			project.State = app.EstadoProyecto(enCurso, cerradas)
+		}
+		project.Cards = app.Cards{Total: total, Done: cerradas}
+		if lastActive.Valid {
+			value := lastActive.Int64
+			project.LastActive = &value
 		}
 		projects = append(projects, project)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list projects: %w", err)
+		return nil, fmt.Errorf("%s: %w", label, err)
 	}
 	return projects, nil
 }

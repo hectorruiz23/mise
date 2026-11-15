@@ -220,7 +220,12 @@ func (h *Handler) Projects(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 	items := make([]projectJSON, 0, len(projects))
 	for _, project := range projects {
-		items = append(items, projectJSON{Key: project.Key, Name: project.Name})
+		items = append(items, projectJSON{
+			Key:   project.Key,
+			Name:  project.Name,
+			State: project.State,
+			Cards: cardsJSON{Total: project.Cards.Total, Done: project.Cards.Done},
+		})
 	}
 	httpserver.WriteJSON(w, nethttp.StatusOK, items)
 }
@@ -249,8 +254,10 @@ func (h *Handler) CreateProject(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 
 	httpserver.WriteJSON(w, nethttp.StatusCreated, projectJSON{
-		Key:  project.Key,
-		Name: project.Name,
+		Key:   project.Key,
+		Name:  project.Name,
+		State: app.EstadoProyecto(0, 0),
+		Cards: cardsJSON{},
 	})
 }
 
@@ -690,8 +697,15 @@ type taskJSON struct {
 }
 
 type projectJSON struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
+	Key   string    `json:"key"`
+	Name  string    `json:"name"`
+	State string    `json:"state"`
+	Cards cardsJSON `json:"cards"`
+}
+
+type cardsJSON struct {
+	Total int `json:"total"`
+	Done  int `json:"done"`
 }
 
 type createProjectRequest struct {

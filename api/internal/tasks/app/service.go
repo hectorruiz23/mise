@@ -21,6 +21,7 @@ type Repo interface {
 	GetTask(ctx context.Context, key string) (domain.Task, error)
 	ListTasks(ctx context.Context, f Filter) ([]domain.Task, string, error)
 	ListProjects(ctx context.Context) ([]Project, error)
+	ListPublicProjects(ctx context.Context) ([]Project, error)
 	CreateProject(ctx context.Context, project Project, now int64) error
 	ListBoardTasks(ctx context.Context, projectKey string) ([]domain.Task, error)
 	UpdateTask(ctx context.Context, t domain.Task, m domain.Movement, expectedVersion int64) error
@@ -84,9 +85,23 @@ type Filter struct {
 	Cursor     string
 }
 
+type Cards struct {
+	Total int
+	Done  int
+}
+
 type Project struct {
-	Key  string
-	Name string
+	Key         string
+	Name        string
+	IsPublic    bool
+	SortOrder   int
+	Description *string
+	RepoURL     *string
+	DemoURL     *string
+	PublicState *string
+	State       string
+	Cards       Cards
+	LastActive  *int64
 }
 
 type Board struct {
@@ -166,6 +181,21 @@ func (s *Service) List(ctx context.Context, f Filter) ([]domain.Task, string, er
 
 func (s *Service) ListProjects(ctx context.Context) ([]Project, error) {
 	return s.repo.ListProjects(ctx)
+}
+
+func (s *Service) ListPublicProjects(ctx context.Context) ([]Project, error) {
+	return s.repo.ListPublicProjects(ctx)
+}
+
+func EstadoProyecto(enCurso, cerradas int) string {
+	switch {
+	case enCurso > 0:
+		return "in_progress"
+	case cerradas > 0:
+		return "done"
+	default:
+		return "idea"
+	}
 }
 
 var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,15}$`)
