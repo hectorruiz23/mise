@@ -1,7 +1,7 @@
 export const STATES = ['backlog', 'ready', 'in_progress', 'blocked', 'review', 'done'] as const
 
 export type State = (typeof STATES)[number]
-export type View = 'board' | 'backlog'
+export type View = 'board' | 'backlog' | 'done'
 export type Priority = 'low' | 'normal' | 'high'
 export type Size = 'S' | 'M' | 'L'
 
