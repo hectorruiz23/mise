@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -15,6 +16,8 @@ import (
 )
 
 const SessionCookieName = "mise_session"
+
+const viewerKind = "viewer"
 
 const maxBodyBytes int64 = 1 << 20
 
@@ -44,6 +47,7 @@ const (
 	AuthSourceBearer AuthSource = "bearer"
 	AuthSourceCookie AuthSource = "cookie"
 	AuthSourceDev    AuthSource = "dev"
+	AuthSourceViewer AuthSource = "viewer"
 )
 
 type authSource = AuthSource
@@ -52,6 +56,7 @@ const (
 	sourceBearer = AuthSourceBearer
 	sourceCookie = AuthSourceCookie
 	sourceDev    = AuthSourceDev
+	sourceViewer = AuthSourceViewer
 )
 
 func PrincipalFrom(ctx context.Context) (Principal, bool) {
@@ -220,9 +225,69 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			WriteRuleError(w, err)
 			return
 		}
+		if principal.Kind == viewerKind {
+			WriteError(w, http.StatusForbidden, kernel.CodeForbidden, "viewers cannot modify the board")
+			return
+		}
 		ctx := withAuthSource(withPrincipal(r.Context(), principal), source)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (s *Server) viewerRead(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Vary", "Authorization, Cookie")
+
+		principal, source, err := s.authenticateViewer(r)
+		if err != nil {
+			WriteRuleError(w, err)
+			return
+		}
+		ctx := withAuthSource(withPrincipal(r.Context(), principal), source)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func (s *Server) authenticateViewer(r *http.Request) (Principal, authSource, error) {
+	if values, present := r.Header["Authorization"]; present {
+		header := ""
+		if len(values) > 0 {
+			header = values[0]
+		}
+		fields := strings.Fields(header)
+		if len(fields) != 2 || !strings.EqualFold(fields[0], "Bearer") || fields[1] == "" {
+			return Principal{}, "", unauthorized("invalid Authorization header")
+		}
+		if s.authenticator == nil {
+			return Principal{}, "", errors.New("httpserver: authenticator is not configured")
+		}
+		principal, err := s.authenticator.Bearer(r.Context(), fields[1])
+		if err != nil {
+			return Principal{}, "", err
+		}
+		return principal, sourceBearer, nil
+	}
+
+	if cookie, err := r.Cookie(SessionCookieName); err == nil {
+		if cookie.Value == "" {
+			return Principal{}, "", unauthorized("credential required")
+		}
+		if s.authenticator == nil {
+			return Principal{}, "", errors.New("httpserver: authenticator is not configured")
+		}
+		principal, err := s.authenticator.Session(r.Context(), cookie.Value)
+		if err != nil {
+			return Principal{}, "", err
+		}
+		return principal, sourceCookie, nil
+	}
+
+	if s.dev != nil {
+		return *s.dev, sourceDev, nil
+	}
+
+	return Principal{ID: 0, Name: "Visitor", Email: "", Kind: viewerKind}, sourceViewer, nil
 }
 
 func unauthorized(msg string) error {

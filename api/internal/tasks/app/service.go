@@ -128,6 +128,9 @@ func New(repo Repo, clock Clock) *Service {
 }
 
 func (s *Service) Create(ctx context.Context, p CreateParams) (domain.Task, bool, error) {
+	if err := viewerForbidden(p.Actor); err != nil {
+		return domain.Task{}, false, err
+	}
 	if p.Actor.Kind != domain.Human {
 		return domain.Task{}, false, &domain.RuleError{
 			Code: domain.CodeForbidden,
@@ -201,6 +204,9 @@ func EstadoProyecto(enCurso, cerradas int) string {
 var projectKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9]{0,15}$`)
 
 func (s *Service) CreateProject(ctx context.Context, p CreateProjectParams) (Project, error) {
+	if err := viewerForbidden(p.Actor); err != nil {
+		return Project{}, err
+	}
 	if p.Actor.Kind != domain.Human {
 		return Project{}, &domain.RuleError{
 			Code: domain.CodeForbidden,
@@ -262,6 +268,10 @@ func (s *Service) Move(
 	ifMatch int64,
 	ifMatchPresent bool,
 ) (domain.Task, error) {
+	if err := viewerForbidden(actor); err != nil {
+		return domain.Task{}, err
+	}
+
 	t, err := s.repo.GetTask(ctx, key)
 	if err != nil {
 		return domain.Task{}, err
@@ -294,6 +304,9 @@ func (s *Service) Update(
 	ifMatch int64,
 	ifMatchPresent bool,
 ) (domain.Task, error) {
+	if err := viewerForbidden(actor); err != nil {
+		return domain.Task{}, err
+	}
 	if actor.Kind == domain.Agent && (p.HasFieldEdits() || p.State == nil) {
 		return domain.Task{}, &domain.RuleError{
 			Code: domain.CodeForbidden,
@@ -390,6 +403,9 @@ func (s *Service) Update(
 }
 
 func (s *Service) Acquire(ctx context.Context, key string, agent domain.Actor) (domain.Task, domain.Lease, error) {
+	if err := viewerForbidden(agent); err != nil {
+		return domain.Task{}, domain.Lease{}, err
+	}
 	task, err := s.repo.GetTask(ctx, key)
 	if err != nil {
 		return domain.Task{}, domain.Lease{}, err
@@ -420,6 +436,9 @@ func (s *Service) Acquire(ctx context.Context, key string, agent domain.Actor) (
 }
 
 func (s *Service) Renew(ctx context.Context, key string, leaseID int64, agent domain.Actor) (domain.Lease, error) {
+	if err := viewerForbidden(agent); err != nil {
+		return domain.Lease{}, err
+	}
 	if agent.Kind != domain.Agent {
 		return domain.Lease{}, forbiddenLease("only an agent may renew a lease")
 	}
@@ -447,6 +466,9 @@ func (s *Service) Renew(ctx context.Context, key string, leaseID int64, agent do
 }
 
 func (s *Service) Release(ctx context.Context, key string, leaseID int64, agent domain.Actor) error {
+	if err := viewerForbidden(agent); err != nil {
+		return err
+	}
 	if agent.Kind != domain.Agent {
 		return forbiddenLease("only an agent may release a lease")
 	}
@@ -475,6 +497,9 @@ func (s *Service) Deliver(
 	evidence []string,
 	prURL *string,
 ) (domain.Task, domain.Delivery, error) {
+	if err := viewerForbidden(actor); err != nil {
+		return domain.Task{}, domain.Delivery{}, err
+	}
 	task, err := s.repo.GetTask(ctx, key)
 	if err != nil {
 		return domain.Task{}, domain.Delivery{}, err
@@ -571,6 +596,9 @@ func (s *Service) Comments(ctx context.Context, key string) ([]domain.Comment, e
 }
 
 func (s *Service) AddComment(ctx context.Context, key string, actor domain.Actor, body string) (domain.Comment, error) {
+	if err := viewerForbidden(actor); err != nil {
+		return domain.Comment{}, err
+	}
 	if _, err := s.repo.GetTask(ctx, key); err != nil {
 		return domain.Comment{}, err
 	}
@@ -603,6 +631,13 @@ func (s *Service) AddComment(ctx context.Context, key string, actor domain.Actor
 
 func forbiddenLease(msg string) *domain.RuleError {
 	return &domain.RuleError{Code: domain.CodeForbidden, Msg: msg}
+}
+
+func viewerForbidden(actor domain.Actor) error {
+	if actor.Kind == domain.Viewer {
+		return &domain.RuleError{Code: domain.CodeForbidden, Msg: "viewers cannot modify the board"}
+	}
+	return nil
 }
 
 func leaseRequired(msg string) *domain.RuleError {

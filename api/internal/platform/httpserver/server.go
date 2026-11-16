@@ -16,6 +16,14 @@ const (
 	DefaultLoginWindow = 15 * time.Minute
 )
 
+type accessPolicy uint8
+
+const (
+	accessAuthenticated accessPolicy = iota
+	accessPublic
+	accessViewerRead
+)
+
 type Options struct {
 	DB            *sql.DB
 	Logger        *slog.Logger
@@ -36,7 +44,7 @@ type Server struct {
 	dev           *Principal
 	limiter       *RateLimiter
 	mux           *http.ServeMux
-	routes        map[string]bool
+	routes        map[string]accessPolicy
 	fallback      http.Handler
 }
 
@@ -66,7 +74,7 @@ func New(opts Options) (*Server, error) {
 		dev:           opts.DevPrincipal,
 		limiter:       NewRateLimiter(opts.LoginLimit, opts.LoginWindow),
 		mux:           http.NewServeMux(),
-		routes:        make(map[string]bool),
+		routes:        make(map[string]accessPolicy),
 		fallback:      http.NotFoundHandler(),
 	}
 	server.Handle("GET /api/health", true, http.HandlerFunc(server.health))
@@ -94,21 +102,44 @@ func VerifyWAL(db *sql.DB) error {
 }
 
 func (s *Server) Handle(pattern string, public bool, handler http.Handler) {
-	s.routes[pattern] = public
-	s.mux.Handle(pattern, s.wrap(public, handler))
+	policy := accessAuthenticated
+	if public {
+		policy = accessPublic
+	}
+	s.register(pattern, policy, handler)
 }
 
-func (s *Server) wrap(public bool, handler http.Handler) http.Handler {
-	if public {
-		return s.origin(handler)
+func (s *Server) HandleRead(pattern string, handler http.Handler) {
+	if !strings.HasPrefix(pattern, http.MethodGet+" ") {
+		panic(fmt.Sprintf("httpserver: HandleRead requires a GET pattern, got %q", pattern))
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.authenticator == nil {
-			WriteError(w, http.StatusInternalServerError, CodeInternal, "internal server error")
-			return
-		}
-		s.auth(s.origin(handler)).ServeHTTP(w, r)
-	})
+	s.register(pattern, accessViewerRead, handler)
+}
+
+func (s *Server) HandleReadFunc(pattern string, handler http.HandlerFunc) {
+	s.HandleRead(pattern, handler)
+}
+
+func (s *Server) register(pattern string, policy accessPolicy, handler http.Handler) {
+	s.routes[pattern] = policy
+	s.mux.Handle(pattern, s.wrap(policy, handler))
+}
+
+func (s *Server) wrap(policy accessPolicy, handler http.Handler) http.Handler {
+	switch policy {
+	case accessPublic:
+		return s.origin(handler)
+	case accessViewerRead:
+		return s.viewerRead(handler)
+	default:
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if s.authenticator == nil {
+				WriteError(w, http.StatusInternalServerError, CodeInternal, "internal server error")
+				return
+			}
+			s.auth(s.origin(handler)).ServeHTTP(w, r)
+		})
+	}
 }
 
 func (s *Server) HandleFunc(pattern string, public bool, handler http.HandlerFunc) {
