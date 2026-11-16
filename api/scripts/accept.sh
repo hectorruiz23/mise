@@ -180,9 +180,13 @@ fi
 
 check_start 2 "GET /api/me without credential"
 http GET /api/me || fail_check "curl failure"
-error_code=$(json_value 'd.get("error", "")' 2>/dev/null || true)
-if [ "$status" = "401" ] && [ "$error_code" = "unauthorized" ]; then
-    pass_check "401 envelope error=unauthorized"
+visitor_id=$(json_value 'd.get("id", "")' 2>/dev/null || true)
+visitor_name=$(json_value 'd.get("name", "")' 2>/dev/null || true)
+visitor_kind=$(json_value 'd.get("kind", "")' 2>/dev/null || true)
+visitor_email=$(json_value 'd.get("email", "missing")' 2>/dev/null || true)
+if [ "$status" = "200" ] && [ "$visitor_id" = "0" ] && [ "$visitor_name" = "Visitor" ] \
+    && [ "$visitor_kind" = "viewer" ] && [ "$visitor_email" = "" ]; then
+    pass_check "200 visitor id=0 kind=viewer"
 else
     fail_check "status=$status body=$body"
 fi

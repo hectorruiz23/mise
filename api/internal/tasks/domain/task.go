@@ -16,8 +16,9 @@ const (
 type ActorKind string
 
 const (
-	Human ActorKind = "human"
-	Agent ActorKind = "agent"
+	Human  ActorKind = "human"
+	Agent  ActorKind = "agent"
+	Viewer ActorKind = "viewer"
 )
 
 type Actor struct {

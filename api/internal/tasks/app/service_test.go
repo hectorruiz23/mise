@@ -96,7 +96,7 @@ func (r *fakeRepo) CreateTask(_ context.Context, p app.CreateParams) (domain.Tas
 	return r.createResult, r.createReplayed, r.createErr
 }
 
-func (r *fakeRepo) GetTask(_ context.Context, _ string) (domain.Task, error) {
+func (r *fakeRepo) GetTask(_ context.Context, _ string, _ app.ReadScope) (domain.Task, error) {
 	if r.getErr != nil {
 		return domain.Task{}, r.getErr
 	}
@@ -108,7 +108,7 @@ func (r *fakeRepo) ListTasks(_ context.Context, f app.Filter) ([]domain.Task, st
 	return r.listTasks, r.listNext, r.listErr
 }
 
-func (r *fakeRepo) ListProjects(_ context.Context) ([]app.Project, error) {
+func (r *fakeRepo) ListProjects(_ context.Context, _ app.ReadScope) ([]app.Project, error) {
 	return nil, nil
 }
 
@@ -120,7 +120,7 @@ func (r *fakeRepo) CreateProject(_ context.Context, _ app.Project, _ int64) erro
 	return nil
 }
 
-func (r *fakeRepo) ListBoardTasks(_ context.Context, _ string) ([]domain.Task, error) {
+func (r *fakeRepo) ListBoardTasks(_ context.Context, _ string, _ app.ReadScope) ([]domain.Task, error) {
 	return nil, nil
 }
 
@@ -194,15 +194,15 @@ func (r *fakeRepo) Deliver(_ context.Context, t domain.Task, d domain.Delivery, 
 	return nil
 }
 
-func (r *fakeRepo) ListLeases(_ context.Context, _ string) ([]domain.Lease, error) {
+func (r *fakeRepo) ListLeases(_ context.Context, _ string, _ app.ReadScope) ([]domain.Lease, error) {
 	return r.listLeases, r.listLeasesErr
 }
 
-func (r *fakeRepo) ListDeliveries(_ context.Context, _ string) ([]domain.Delivery, error) {
+func (r *fakeRepo) ListDeliveries(_ context.Context, _ string, _ app.ReadScope) ([]domain.Delivery, error) {
 	return r.listDeliveries, r.listDeliveriesErr
 }
 
-func (r *fakeRepo) ListMovements(_ context.Context, _ string) ([]domain.Movement, error) {
+func (r *fakeRepo) ListMovements(_ context.Context, _ string, _ app.ReadScope) ([]domain.Movement, error) {
 	return r.listMovements, r.listMovementsErr
 }
 
@@ -212,7 +212,7 @@ func (r *fakeRepo) CreateComment(_ context.Context, c domain.Comment) (domain.Co
 	return c, nil
 }
 
-func (r *fakeRepo) ListComments(_ context.Context, _ string) ([]domain.Comment, error) {
+func (r *fakeRepo) ListComments(_ context.Context, _ string, _ app.ReadScope) ([]domain.Comment, error) {
 	return r.listComments, r.listCommentsErr
 }
 
@@ -429,7 +429,7 @@ func TestListDelegatesToRepo(t *testing.T) {
 	service := app.New(repo, fakeClock(1700))
 	filter := app.Filter{ProjectKey: "MI", State: domain.Backlog, Limit: 10}
 
-	tasks, next, err := service.List(context.Background(), filter)
+	tasks, next, err := service.List(context.Background(), human(), filter)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

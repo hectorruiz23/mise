@@ -1,13 +1,18 @@
 import { useState, type FormEvent } from 'react'
 import { formatDateTime, formatRelative, isoDate } from '../dates'
-import type { Comment } from '../types'
+import type { Capabilities } from '../permissions'
+import type { Comment, Me } from '../types'
 import { actorLabel } from '../types'
 
 export function Comments({
+  me,
+  caps,
   comments,
   now,
   onPost,
 }: {
+  me: Me
+  caps: Capabilities
   comments: Comment[]
   now: number
   onPost: (body: string) => Promise<void>
@@ -44,7 +49,11 @@ export function Comments({
         <span className="dato">{ordered.length}</span>
       </div>
       {ordered.length === 0 ? (
-        <p className="sheet-empty">No comments yet. Notes from you and the agent appear here.</p>
+        <p className="sheet-empty">
+          {caps.canWrite
+            ? 'No comments yet. Notes from you and the agent appear here.'
+            : 'No comments yet.'}
+        </p>
       ) : (
         <ol className="comment-list">
           {ordered.map(comment => {
@@ -68,34 +77,36 @@ export function Comments({
         </ol>
       )}
 
-      <form className="sheet-form comment-form" onSubmit={submit} noValidate>
-        <label htmlFor="comment-body">
-          Add a comment
-          <span className="opcional">Plain text. The author comes from your credential.</span>
-        </label>
-        <textarea
-          id="comment-body"
-          name="body"
-          rows={3}
-          maxLength={10000}
-          value={body}
-          disabled={sending}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? 'comment-error' : undefined}
-          onChange={event => {
-            setBody(event.target.value)
-            setError('')
-          }}
-        />
-        {error && (
-          <p id="comment-error" className="error" role="alert">
-            {error}
-          </p>
-        )}
-        <button type="submit" className="primario" disabled={sending || !body.trim()}>
-          {sending ? 'Posting…' : 'Post comment'}
-        </button>
-      </form>
+      {caps.canWrite && (
+        <form className="sheet-form comment-form" onSubmit={submit} noValidate>
+          <label htmlFor="comment-body">
+            Add a comment
+            <span className="opcional">Plain text. The author comes from your credential.</span>
+          </label>
+          <textarea
+            id="comment-body"
+            name="body"
+            rows={3}
+            maxLength={10000}
+            value={body}
+            disabled={sending}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'comment-error' : undefined}
+            onChange={event => {
+              setBody(event.target.value)
+              setError('')
+            }}
+          />
+          {error && (
+            <p id="comment-error" className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <button type="submit" className="primario" disabled={sending || !body.trim()}>
+            {sending ? 'Posting…' : 'Post comment'}
+          </button>
+        </form>
+      )}
     </section>
   )
 }

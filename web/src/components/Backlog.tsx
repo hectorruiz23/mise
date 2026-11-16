@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError } from '../api'
 import { formatShortDate, isoDate } from '../dates'
+import type { Capabilities } from '../permissions'
 import type { Priority, Size, Task } from '../types'
 import { PRIORITY_LABELS, STATE_LABELS } from '../types'
 
@@ -54,6 +55,7 @@ function sortRows(tasks: Task[], sort: BacklogSort): Task[] {
 }
 
 export type BacklogProps = {
+  caps: Capabilities
   rows: Task[]
   loadedCount: number
   flashKey: string | null
@@ -66,6 +68,7 @@ export type BacklogProps = {
 }
 
 export function Backlog({
+  caps,
   rows,
   loadedCount,
   flashKey,
@@ -145,6 +148,7 @@ export function Backlog({
   }
 
   async function moveToReady(task: Task) {
+    if (!caps.canWrite) return
     setMovingKey(task.key)
     setActionError('')
     onNoticeChange('')
@@ -182,6 +186,7 @@ export function Backlog({
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!caps.canWrite) return
     setCreatingProject(true)
     setProjectError('')
 
@@ -227,16 +232,18 @@ export function Backlog({
             <option value="oldest">Oldest</option>
           </select>
         </div>
-        <button
-          type="button"
-          className="secundario"
-          onClick={() => {
-            setShowingProjectForm(value => !value)
-            setProjectError('')
-          }}
-        >
-          New project
-        </button>
+        {caps.canWrite && (
+          <button
+            type="button"
+            className="secundario"
+            onClick={() => {
+              setShowingProjectForm(value => !value)
+              setProjectError('')
+            }}
+          >
+            New project
+          </button>
+        )}
       </div>
 
       <div className="abertura">
@@ -404,14 +411,16 @@ export function Backlog({
                         <time dateTime={isoDate(task.created_at)}>{formatShortDate(task.created_at)}</time>
                       </td>
                       <td className="celda-accion">
-                        <button
-                          type="button"
-                          className="accion-fila"
-                          disabled={movingKey === task.key}
-                          onClick={() => void moveToReady(task)}
-                        >
-                          {movingKey === task.key ? 'Moving…' : 'Move to ready'}
-                        </button>
+                        {caps.canWrite && (
+                          <button
+                            type="button"
+                            className="accion-fila"
+                            disabled={movingKey === task.key}
+                            onClick={() => void moveToReady(task)}
+                          >
+                            {movingKey === task.key ? 'Moving…' : 'Move to ready'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

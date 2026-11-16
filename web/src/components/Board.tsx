@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react'
-import type { State, Task, TaskDetail } from '../types'
+import type { Capabilities } from '../permissions'
+import type { Me, State, Task, TaskDetail } from '../types'
 import { STATE_LABELS, STATES } from '../types'
 import { Column } from './Column'
 
 const BOARD_STATES = STATES.filter(state => state !== 'backlog')
 
 export type BoardProps = {
+  me: Me
+  caps: Capabilities
   tasks: Task[]
   details: Record<string, TaskDetail>
   now: number
@@ -17,6 +20,8 @@ export type BoardProps = {
 }
 
 export function Board({
+  me,
+  caps,
   tasks,
   details,
   now,
@@ -56,7 +61,9 @@ export function Board({
           <button
             type="button"
             id="board-review"
-            onClick={() => (byState.review.length ? onStartReview() : chooseState('review'))}
+            onClick={() =>
+              byState.review.length && caps.canWrite ? onStartReview() : chooseState('review')
+            }
           >
             <span className="dato">{byState.review.length}</span> to review
           </button>
@@ -97,8 +104,16 @@ export function Board({
       </div>
 
       <div className="pie-tablero">
-        <p>The agent works. You review and close.</p>
-        <p>No drag and drop. Open a task to move it.</p>
+        <p>
+          {caps.canWrite
+            ? 'The agent works. You review and close.'
+            : 'The agent works. The owner reviews and closes.'}
+        </p>
+        <p>
+          {caps.canWrite
+            ? 'No drag and drop. Open a task to move it.'
+            : 'No drag and drop. Open a task to see its detail.'}
+        </p>
       </div>
     </section>
   )

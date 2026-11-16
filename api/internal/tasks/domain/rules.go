@@ -52,6 +52,10 @@ func IsLive(l Lease, now int64) bool {
 }
 
 func ValidateMove(t Task, to State, actor Actor, reason string, hasDelivery bool) error {
+	if actor.Kind == Viewer {
+		return ruleError(CodeForbidden, "viewers cannot modify the board")
+	}
+
 	if t.State == Review && to == Done && actor.Kind != Human {
 		return ruleError(CodeForbidden, "only a human may move a task from review to done")
 	}
@@ -162,6 +166,10 @@ func Acquire(t Task, live *Lease, agent Actor, now int64, ttlSeconds int64) (Tas
 }
 
 func ValidateDelivery(t Task, lease *Lease, actor Actor, summary string, evidence []string) error {
+	if actor.Kind == Viewer {
+		return ruleError(CodeForbidden, "viewers cannot modify the board")
+	}
+
 	if strings.TrimSpace(summary) == "" {
 		return invalidInput("summary is required")
 	}

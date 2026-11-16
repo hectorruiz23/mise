@@ -1,5 +1,6 @@
 import { formatDateTime, formatRelative, isoDate } from '../dates'
-import type { Delivery, Task } from '../types'
+import type { Capabilities } from '../permissions'
+import type { Delivery, Me, Task } from '../types'
 import { actorLabel } from '../types'
 
 function pullRequestNumber(url: string): string | null {
@@ -8,10 +9,14 @@ function pullRequestNumber(url: string): string | null {
 }
 
 export function Deliveries({
+  me,
+  caps,
   deliveries,
   task,
   now,
 }: {
+  me: Me
+  caps: Capabilities
   deliveries: Delivery[]
   task: Task
   now: number
@@ -27,12 +32,16 @@ export function Deliveries({
       </div>
       {task.state === 'review' && ordered.length > 0 && (
         <p className="sheet-note">
-          You are reviewing the newest delivery below. Approving closes the card in your name.
+          {caps.canWrite
+            ? 'You are reviewing the newest delivery below. Approving closes the card in your name.'
+            : 'The newest delivery is shown below.'}
         </p>
       )}
       {ordered.length === 0 ? (
         <p className="sheet-empty">
-          No deliveries yet. An agent must hand the card back with evidence before it can be reviewed.
+          {caps.canWrite
+            ? 'No deliveries yet. An agent must hand the card back with evidence before it can be reviewed.'
+            : 'No deliveries yet.'}
         </p>
       ) : (
         <ol className="delivery-list">
@@ -46,7 +55,11 @@ export function Deliveries({
               {(delivery.id === approvingId || delivery.pr_url) && (
                 <div className="delivery-head">
                   {delivery.id === approvingId && (
-                    <p className="approving">Newest delivery — this is what you are approving.</p>
+                    <p className="approving">
+                      {caps.canWrite
+                        ? 'Newest delivery — this is what you are approving.'
+                        : 'Newest delivery.'}
+                    </p>
                   )}
                   {delivery.pr_url && (
                     <a

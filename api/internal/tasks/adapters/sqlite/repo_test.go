@@ -380,7 +380,7 @@ func TestListOrderFilterAndCursor(t *testing.T) {
 		t.Fatalf("move second to ready: %v", err)
 	}
 
-	firstPage, cursor, err := service.List(context.Background(), app.Filter{
+	firstPage, cursor, err := service.List(context.Background(), human(), app.Filter{
 		ProjectKey: "MI", Limit: 2,
 	})
 	if err != nil {
@@ -391,7 +391,7 @@ func TestListOrderFilterAndCursor(t *testing.T) {
 		t.Fatal("first page has no next cursor")
 	}
 
-	secondPage, cursor, err := service.List(context.Background(), app.Filter{
+	secondPage, cursor, err := service.List(context.Background(), human(), app.Filter{
 		ProjectKey: "MI", Limit: 2, Cursor: cursor,
 	})
 	if err != nil {
@@ -402,7 +402,7 @@ func TestListOrderFilterAndCursor(t *testing.T) {
 		t.Fatalf("last page cursor = %q, want empty", cursor)
 	}
 
-	ready, _, err := service.List(context.Background(), app.Filter{
+	ready, _, err := service.List(context.Background(), human(), app.Filter{
 		ProjectKey: "MI", State: domain.Ready,
 	})
 	if err != nil {
@@ -410,7 +410,7 @@ func TestListOrderFilterAndCursor(t *testing.T) {
 	}
 	assertKeys(t, ready, "MI-2")
 
-	otherProject, _, err := service.List(context.Background(), app.Filter{
+	otherProject, _, err := service.List(context.Background(), human(), app.Filter{
 		ProjectKey: "PO",
 	})
 	if err != nil {
@@ -420,25 +420,25 @@ func TestListOrderFilterAndCursor(t *testing.T) {
 		t.Fatalf("other project tasks = %+v, want none", otherProject)
 	}
 
-	_, _, err = service.List(context.Background(), app.Filter{
+	_, _, err = service.List(context.Background(), human(), app.Filter{
 		ProjectKey: "MI", State: domain.Ready, Limit: 2,
 		Cursor: mustCursor(t, service, app.Filter{ProjectKey: "MI", Limit: 2}),
 	})
 	wantRuleCode(t, err, domain.CodeInvalidInput)
 
-	_, _, err = service.List(context.Background(), app.Filter{
+	_, _, err = service.List(context.Background(), human(), app.Filter{
 		ProjectKey: "PO", Cursor: mustCursor(t, service, app.Filter{ProjectKey: "MI", Limit: 2}),
 	})
 	wantRuleCode(t, err, domain.CodeInvalidInput)
 
-	_, _, err = service.List(context.Background(), app.Filter{Cursor: "not a cursor !!"})
+	_, _, err = service.List(context.Background(), human(), app.Filter{Cursor: "not a cursor !!"})
 	wantRuleCode(t, err, domain.CodeInvalidInput)
 }
 
 func mustCursor(t *testing.T, service *app.Service, filter app.Filter) string {
 	t.Helper()
 
-	_, cursor, err := service.List(context.Background(), filter)
+	_, cursor, err := service.List(context.Background(), human(), filter)
 	if err != nil {
 		t.Fatalf("list for cursor: %v", err)
 	}
@@ -781,7 +781,7 @@ func TestReleaseLease(t *testing.T) {
 		t.Fatalf("closed_reason = %v, want released", reason)
 	}
 
-	task, err := service.Get(context.Background(), created.Key)
+	task, err := service.Get(context.Background(), human(), created.Key)
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
@@ -825,7 +825,7 @@ func TestDeliverByAgent(t *testing.T) {
 	}
 
 	repo := sqlite.New(database)
-	deliveries, err := repo.ListDeliveries(context.Background(), created.Key)
+	deliveries, err := repo.ListDeliveries(context.Background(), created.Key, app.AllProjects)
 	if err != nil {
 		t.Fatalf("list deliveries: %v", err)
 	}
@@ -1013,7 +1013,7 @@ func TestListLeasesAndDeliveriesInInsertionOrder(t *testing.T) {
 	}
 
 	repo := sqlite.New(database)
-	leases, err := repo.ListLeases(context.Background(), created.Key)
+	leases, err := repo.ListLeases(context.Background(), created.Key, app.AllProjects)
 	if err != nil {
 		t.Fatalf("list leases: %v", err)
 	}
@@ -1034,7 +1034,7 @@ func TestListLeasesAndDeliveriesInInsertionOrder(t *testing.T) {
 		t.Fatalf("second deliver: %v", err)
 	}
 
-	deliveries, err := repo.ListDeliveries(context.Background(), created.Key)
+	deliveries, err := repo.ListDeliveries(context.Background(), created.Key, app.AllProjects)
 	if err != nil {
 		t.Fatalf("list deliveries: %v", err)
 	}

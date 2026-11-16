@@ -5,10 +5,12 @@ import type { Me } from '../types'
 export function Login({
   onSignedIn,
   onRequestAccess,
+  onBack,
   initialError = '',
 }: {
   onSignedIn: (user: Me) => void
   onRequestAccess: () => void
+  onBack: () => void
   initialError?: string
 }) {
   const [token, setToken] = useState('')
@@ -75,6 +77,9 @@ export function Login({
               </button>
               <button type="button" className="access-link" onClick={onRequestAccess}>
                 Request access
+              </button>
+              <button type="button" className="access-link" onClick={onBack}>
+                Back to the board
               </button>
             </div>
           </form>

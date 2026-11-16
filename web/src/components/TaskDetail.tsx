@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import { formatDateTime, formatRelative, isoDate, leaseMinutesLeft } from '../dates'
-import { destinationsFor, requiresReason } from '../permissions'
-import type { State, Task, TaskDetail as TaskDetailData } from '../types'
+import { destinationsFor, requiresReason, type Capabilities } from '../permissions'
+import type { Me, State, Task, TaskDetail as TaskDetailData } from '../types'
 import { actorLabel, PRIORITY_LABELS, SIZE_LABELS, STATE_LABELS } from '../types'
 import { Comments } from './Comments'
 import { Deliveries } from './Deliveries'
@@ -24,6 +24,8 @@ export type ReviewQueue = {
 }
 
 export function TaskDetail({
+  me,
+  caps,
   taskKey,
   now,
   queue,
@@ -32,6 +34,8 @@ export function TaskDetail({
   onReloadBoard,
   onSessionExpired,
 }: {
+  me: Me
+  caps: Capabilities
   taskKey: string
   now: number
   queue?: ReviewQueue
@@ -138,7 +142,11 @@ export function TaskDetail({
         if (currentQueue.canNext) currentQueue.onNext()
       } else if (event.key === 'k') {
         if (currentQueue.canPrev) currentQueue.onPrev()
-      } else if ((event.key === 'd' || event.key === 'D') && taskRef.current?.state === 'review') {
+      } else if (
+        caps.canWrite &&
+        (event.key === 'd' || event.key === 'D') &&
+        taskRef.current?.state === 'review'
+      ) {
         void runMoveRef.current('done', '')
       }
     }
@@ -148,7 +156,7 @@ export function TaskDetail({
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('keydown', onKey)
     }
-  }, [load, onClose])
+  }, [caps.canWrite, load, onClose])
 
   useEffect(() => {
     if (menuOpen) firstMenuItem.current?.focus()
@@ -176,7 +184,7 @@ export function TaskDetail({
   }
 
   const task = detail?.task
-  const destinations = task ? destinationsFor(task, detail ?? undefined) : []
+  const destinations = task ? destinationsFor(me, task, detail ?? undefined) : []
   const reasonRequired = task !== undefined && destination !== '' && requiresReason(task.state, destination)
 
   const liveLease = detail?.leases.find(lease => lease.released_at === null && lease.expires_at > now)
@@ -207,7 +215,7 @@ export function TaskDetail({
   }
 
   async function runMove(to: State, why: string) {
-    if (!task) return
+    if (!caps.canWrite || !task) return
     if (requiresReason(task.state, to) && !why.trim()) {
       setMoveError(
         task.state === 'blocked' ? 'Write how the block was resolved.' : 'Write the reason for blocking the card.',
@@ -267,6 +275,7 @@ export function TaskDetail({
   }
 
   async function postComment(body: string) {
+    if (!caps.canWrite) return
     try {
       await api.postComment(taskKey, body)
       await load(true)
@@ -294,7 +303,7 @@ export function TaskDetail({
     </button>
   )
 
-  const menu = task && (
+  const menu = caps.canWrite && task && (
     <div
       className="ficha-menu"
       role="menu"
@@ -380,14 +389,14 @@ export function TaskDetail({
     >
       <article
         ref={dialog}
-        className="ficha-modal"
+        className={`ficha-modal${caps.canWrite ? '' : ' read-mode'}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={detail ? 'ficha-title' : undefined}
         aria-label={detail ? undefined : 'Card detail'}
         onKeyDown={trapFocus}
       >
-        {queue && (
+        {caps.canWrite && queue && (
           <div className="ficha-cola" role="group" aria-label="Review queue">
             <p className="ficha-cola-cuenta">
               Review <span className="dato">{queue.position}</span> of <span className="dato">{queue.total}</span>
@@ -507,25 +516,43 @@ export function TaskDetail({
                 </p>
               )}
 
-              <Comments comments={detail.comments} now={now} onPost={postComment} />
+              <Comments
+                me={me}
+                caps={caps}
+                comments={detail.comments}
+                now={now}
+                onPost={postComment}
+              />
             </div>
 
             <div className="ficha-columna ficha-actividad" role="region" aria-label="Activity" tabIndex={0}>
               <div className="ficha-estado">
                 <div className="ficha-estado-fila">
                   <span className="ficha-estado-label">State</span>
-                  {stateButton('block')}
+                  {caps.canWrite ? (
+                    stateButton('block')
+                  ) : (
+                    <span className="ficha-estado-btn sheet-state-label">{stateLabel}</span>
+                  )}
                 </div>
-                {menuOpen && menu}
+                {caps.canWrite && menuOpen && menu}
               </div>
 
-              <Deliveries deliveries={detail.deliveries} task={task} now={now} />
+              <Deliveries me={me} caps={caps} deliveries={detail.deliveries} task={task} now={now} />
               <Movements movements={detail.movements} now={now} />
             </div>
           </div>
         ) : null}
 
-        {detail && task && <div className="ficha-pie">{stateButton('foot')}</div>}
+        {detail && task && (
+          <div className="ficha-pie">
+            {caps.canWrite ? (
+              stateButton('foot')
+            ) : (
+              <span className="ficha-estado-btn sheet-state-label">{stateLabel}</span>
+            )}
+          </div>
+        )}
       </article>
     </div>,
     document.body,
