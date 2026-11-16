@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import { normalize } from '../filters'
-import type { CreateTaskInput, State, Task, View } from '../types'
+import { capabilitiesFor, type Capabilities } from '../permissions'
+import type { CreateTaskInput, Me, State, Task, View } from '../types'
 import { STATE_LABELS } from '../types'
 import { PAGE_SIZE, useBacklog } from '../useBacklog'
 import { useBoard } from '../useBoard'
@@ -13,7 +14,9 @@ import { CreateTask } from './CreateTask'
 import { TaskDetail, type ReviewQueue } from './TaskDetail'
 import { ViewTabs } from './Views'
 
-function parseHash(): { view: View; key: string | null; reviewing: boolean } {
+type Route = { view: View; key: string | null; reviewing: boolean }
+
+function parseHash(): Route {
   const [rawView, rawKey] = location.hash.replace(/^#/, '').split('/')
   const reviewing = rawView === 'review'
   const view: View = rawView === 'backlog' ? 'backlog' : 'board'
@@ -21,8 +24,21 @@ function parseHash(): { view: View; key: string | null; reviewing: boolean } {
   return { view, key, reviewing }
 }
 
-export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
-  const [view, setView] = useState<View>(() => parseHash().view)
+function initialRoute(caps: Capabilities): Route {
+  const parsed = parseHash()
+  if (caps.canWrite) return parsed
+
+  if (parsed.view === 'backlog' || parsed.reviewing) {
+    const target = parsed.key ? `#board/${encodeURIComponent(parsed.key)}` : '#board'
+    history.replaceState(null, '', target)
+  }
+  return { view: 'board', key: parsed.key, reviewing: false }
+}
+
+export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () => void }) {
+  const caps = capabilitiesFor(me)
+  const [initial] = useState(() => initialRoute(caps))
+  const [view, setView] = useState<View>(initial.view)
   const viewRef = useRef(view)
   viewRef.current = view
 
@@ -30,10 +46,10 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [project, setProject] = useState('')
   const [notice, setNotice] = useState('')
   const [creating, setCreating] = useState(false)
-  const [openKey, setOpenKey] = useState<string | null>(() => parseHash().key)
+  const [openKey, setOpenKey] = useState<string | null>(initial.key)
   const openedByUs = useRef(false)
   const [queue, setQueue] = useState<{ keys: string[]; index: number } | null>(null)
-  const initialReview = useRef(parseHash().reviewing)
+  const initialReview = useRef(initial.reviewing)
   const [createdTask, setCreatedTask] = useState<Task | null>(null)
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000))
   const [reservedHeight, setReservedHeight] = useState<number | null>(null)
@@ -45,18 +61,22 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
   const board = useBoard(view === 'board')
   const backlog = useBacklog({ active: view === 'backlog', createdTask, onSessionExpired })
 
-  const navigate = useCallback((next: View) => {
-    if (viewRef.current === next) return
-    const height = contentRef.current?.offsetHeight ?? null
-    scrollRef.current[viewRef.current] = window.scrollY
-    viewRef.current = next
-    setSearch('')
-    setProject('')
-    setCreating(false)
-    setOpenKey(null)
-    setReservedHeight(height)
-    setView(next)
-  }, [])
+  const navigate = useCallback(
+    (next: View) => {
+      const target: View = caps.canWrite ? next : 'board'
+      if (viewRef.current === target) return
+      const height = contentRef.current?.offsetHeight ?? null
+      scrollRef.current[viewRef.current] = window.scrollY
+      viewRef.current = target
+      setSearch('')
+      setProject('')
+      setCreating(false)
+      setOpenKey(null)
+      setReservedHeight(height)
+      setView(target)
+    },
+    [caps.canWrite],
+  )
 
   useLayoutEffect(() => {
     const top = scrollRef.current[view] ?? 0
@@ -91,11 +111,12 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
   )
 
   const startReview = useCallback(() => {
+    if (!caps.canWrite) return
     const keys = reviewSnapshot()
     if (keys.length === 0) return
     setQueue({ keys, index: 0 })
     location.hash = '#review/' + encodeURIComponent(keys[0])
-  }, [reviewSnapshot])
+  }, [caps.canWrite, reviewSnapshot])
 
   const goTo = useCallback(
     (index: number) => {
@@ -109,6 +130,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
   )
 
   const advance = useCallback(async () => {
+    if (!caps.canWrite) return
     await board.reload()
     if (!queue) return
     if (queue.index + 1 < queue.keys.length) {
@@ -117,7 +139,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
     }
     setQueue({ keys: queue.keys, index: queue.keys.length })
     history.replaceState(null, '', '#review')
-  }, [board.reload, goTo, queue])
+  }, [board.reload, caps.canWrite, goTo, queue])
 
   const exitQueue = useCallback(() => {
     history.replaceState(null, '', '#board')
@@ -128,10 +150,15 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
 
   useEffect(() => {
     const onHashChange = () => {
-      const next = parseHash()
+      let next = parseHash()
+      if (!caps.canWrite && (next.view === 'backlog' || next.reviewing)) {
+        const target = next.key ? `#board/${encodeURIComponent(next.key)}` : '#board'
+        history.replaceState(null, '', target)
+        next = { view: 'board', key: next.key, reviewing: false }
+      }
       navigate(next.view)
       setOpenKey(next.key)
-      if (!next.reviewing) {
+      if (!next.reviewing || !caps.canWrite) {
         setQueue(null)
         return
       }
@@ -150,10 +177,10 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
-  }, [navigate, reviewSnapshot])
+  }, [caps.canWrite, navigate, reviewSnapshot])
 
   useEffect(() => {
-    if (!initialReview.current || board.board === null) return
+    if (!caps.canWrite || !initialReview.current || board.board === null) return
     initialReview.current = false
     if (queue !== null) return
     const parsed = parseHash()
@@ -165,7 +192,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
       return
     }
     if (parsed.key) setQueue({ keys: [parsed.key], index: 0 })
-  }, [board.board, queue, reviewSnapshot])
+  }, [board.board, caps.canWrite, queue, reviewSnapshot])
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30_000)
@@ -253,6 +280,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
   }, [])
 
   async function create(input: CreateTaskInput, idempotencyKey: string) {
+    if (!caps.canWrite) return
     try {
       const task = await api.createTask(input, idempotencyKey)
       setCreating(false)
@@ -273,6 +301,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
   }
 
   async function move(task: Task, destination: State, reason: string) {
+    if (!caps.canWrite) return
     try {
       if (viewRef.current === 'backlog') {
         await api.patchTask(task.key, { state: destination, reason: reason || undefined }, task.version)
@@ -290,23 +319,28 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
     }
   }
 
-  const sheetKey = queue ? queue.keys[queue.index] : openKey
-  const queueEmpty = queue !== null && queue.index >= queue.keys.length
-  const reviewQueue: ReviewQueue | undefined = queue
+  const activeQueue = caps.canWrite ? queue : null
+  const sheetKey = activeQueue ? activeQueue.keys[activeQueue.index] : openKey
+  const queueEmpty = activeQueue !== null && activeQueue.index >= activeQueue.keys.length
+  const reviewQueue: ReviewQueue | undefined = activeQueue
     ? {
-        position: queue.index + 1,
-        total: queue.keys.length,
-        canPrev: queue.index > 0,
-        canNext: queue.index < queue.keys.length - 1,
-        onPrev: () => goTo(queue.index - 1),
-        onNext: () => goTo(queue.index + 1),
+        position: activeQueue.index + 1,
+        total: activeQueue.keys.length,
+        canPrev: activeQueue.index > 0,
+        canNext: activeQueue.index < activeQueue.keys.length - 1,
+        onPrev: () => goTo(activeQueue.index - 1),
+        onNext: () => goTo(activeQueue.index + 1),
         onExit: exitQueue,
         onApproved: advance,
       }
     : undefined
 
   return (
-    <main className="contenedor principal" id="panel" tabIndex={-1}>
+    <main
+      className={`contenedor principal${caps.canWrite ? '' : ' read-mode'}`}
+      id="panel"
+      tabIndex={-1}
+    >
       <a
         className="saltar"
         href="#panel-content"
@@ -320,15 +354,17 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
 
       <div className="titulo-tablero">
         <h1>{view === 'board' ? 'Board' : 'Backlog'}</h1>
-        <ViewTabs activeView={view} backlogCount={tabCount} hasMore={tabHasMore} />
+        <ViewTabs me={me} caps={caps} activeView={view} backlogCount={tabCount} hasMore={tabHasMore} />
         <span className="total dato">
           {titleCount} {titleCount === '1' ? 'task' : 'tasks'}
         </span>
-        <div className="titulo-acciones">
-          <button type="button" className="primario" onClick={() => setCreating(value => !value)}>
-            {creating ? 'Close form' : 'New task'}
-          </button>
-        </div>
+        {caps.canWrite && (
+          <div className="titulo-acciones">
+            <button type="button" className="primario" onClick={() => setCreating(value => !value)}>
+              {creating ? 'Close form' : 'New task'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="herramientas">
@@ -403,7 +439,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
           </p>
         )}
 
-        {creating && (
+        {creating && caps.canWrite && (
           <CreateTask
             projects={projects}
             onCreate={create}
@@ -414,6 +450,8 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
         <div className="vista" hidden={view !== 'board'}>
           {board.board !== null ? (
             <Board
+              me={me}
+              caps={caps}
               tasks={boardTasks}
               details={board.details}
               now={now}
@@ -437,6 +475,7 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
         <div className="vista" hidden={view !== 'backlog'}>
           {backlog.hasLoaded ? (
             <Backlog
+              caps={caps}
               rows={backlogRows}
               loadedCount={backlog.rows.length}
               flashKey={backlog.flashKey}
@@ -464,10 +503,12 @@ export function Panel({ onSessionExpired }: { onSessionExpired: () => void }) {
       ) : sheetKey ? (
         <TaskDetail
           key={sheetKey}
+          me={me}
+          caps={caps}
           taskKey={sheetKey}
           now={now}
           queue={reviewQueue}
-          onClose={queue ? exitQueue : closeCard}
+          onClose={activeQueue ? exitQueue : closeCard}
           onMove={move}
           onReloadBoard={activeReload}
           onSessionExpired={onSessionExpired}

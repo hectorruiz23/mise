@@ -59,27 +59,11 @@ export function capabilitiesFor(me: Me): Capabilities {
   return HUMAN_CAPABILITIES
 }
 
-export function destinationsFor(task: Task, detail: TaskDetail | undefined): State[]
-export function destinationsFor(me: Me, task: Task, detail: TaskDetail | undefined): State[]
-export function destinationsFor(
-  meOrTask: Me | Task,
-  taskOrDetail: Task | TaskDetail | undefined,
-  detail?: TaskDetail,
-): State[] {
-  let task: Task
-  let resolvedDetail: TaskDetail | undefined
-
-  if ('kind' in meOrTask) {
-    if (isViewer(meOrTask)) return []
-    task = taskOrDetail as Task
-    resolvedDetail = detail
-  } else {
-    task = meOrTask
-    resolvedDetail = taskOrDetail as TaskDetail | undefined
-  }
+export function destinationsFor(me: Me, task: Task, detail: TaskDetail | undefined): State[] {
+  if (!capabilitiesFor(me).canWrite) return []
 
   const moves = HUMAN_MOVES[task.state] ?? []
-  if (task.state === 'in_progress' && resolvedDetail && resolvedDetail.deliveries.length === 0) {
+  if (task.state === 'in_progress' && detail && detail.deliveries.length === 0) {
     return moves.filter(state => state !== 'review')
   }
   return moves

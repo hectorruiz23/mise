@@ -123,7 +123,7 @@ export default function App() {
         onSignIn={() => setScreen('login')}
         onSignOut={() => void signOut()}
       />
-      <Panel key={panelKey} onSessionExpired={sessionExpired} />
+      <Panel key={panelKey} me={me} onSessionExpired={sessionExpired} />
     </>
   )
 }

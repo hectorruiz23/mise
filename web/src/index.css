@@ -234,6 +234,7 @@ h4 { font-size: 14px; }
 .ficha-estado-fila { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .ficha-estado-label { font: var(--type-data); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-light); }
 .ficha-estado-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-1) var(--space-3); border: 1px solid var(--ink); border-radius: 2px; background: var(--card); color: var(--ink); font: var(--type-data); font-size: 13px; font-weight: 700; }
+.read-mode .sheet-state-label { padding-inline: 0; border-color: transparent; background: transparent; cursor: default; }
 .ficha-caret { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; }
 .ficha-menu { position: absolute; right: var(--space-4); top: calc(100% - 4px); z-index: 3; width: min(272px, calc(100% - 2 * var(--space-4))); padding: var(--space-2); background: var(--card); border: 1px solid var(--ink); box-shadow: 0 16px 34px rgba(20, 12, 26, 0.3); }
 .ficha-menu-titulo { padding: var(--space-1) var(--space-3) var(--space-2); font: var(--type-data); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-light); }
