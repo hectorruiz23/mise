@@ -18,12 +18,12 @@ const CodeNotFound = domain.CodeNotFound
 
 type Repo interface {
 	CreateTask(ctx context.Context, params CreateParams) (domain.Task, bool, error)
-	GetTask(ctx context.Context, key string) (domain.Task, error)
+	GetTask(ctx context.Context, key string, scope ReadScope) (domain.Task, error)
 	ListTasks(ctx context.Context, f Filter) ([]domain.Task, string, error)
-	ListProjects(ctx context.Context) ([]Project, error)
+	ListProjects(ctx context.Context, scope ReadScope) ([]Project, error)
 	ListPublicProjects(ctx context.Context) ([]Project, error)
 	CreateProject(ctx context.Context, project Project, now int64) error
-	ListBoardTasks(ctx context.Context, projectKey string) ([]domain.Task, error)
+	ListBoardTasks(ctx context.Context, projectKey string, scope ReadScope) ([]domain.Task, error)
 	UpdateTask(ctx context.Context, t domain.Task, m domain.Movement, expectedVersion int64) error
 	CountDeliveries(ctx context.Context, taskKey string) (int, error)
 
@@ -33,11 +33,11 @@ type Repo interface {
 	ReleaseLease(ctx context.Context, leaseID int64, agentID int64, at int64, reason string) error
 	CloseLiveLease(ctx context.Context, taskKey string, at int64, reason string) (bool, error)
 	Deliver(ctx context.Context, t domain.Task, d domain.Delivery, m domain.Movement, expectedVersion int64) error
-	ListLeases(ctx context.Context, taskKey string) ([]domain.Lease, error)
-	ListDeliveries(ctx context.Context, taskKey string) ([]domain.Delivery, error)
-	ListMovements(ctx context.Context, taskKey string) ([]domain.Movement, error)
+	ListLeases(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Lease, error)
+	ListDeliveries(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Delivery, error)
+	ListMovements(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Movement, error)
 	CreateComment(ctx context.Context, c domain.Comment) (domain.Comment, error)
-	ListComments(ctx context.Context, taskKey string) ([]domain.Comment, error)
+	ListComments(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Comment, error)
 }
 
 type Clock interface{ Now() int64 }
@@ -78,11 +78,19 @@ func (p Patch) HasFieldEdits() bool {
 	return p.Title != nil || p.NotesSet || p.AcceptSet || p.Priority != nil || p.SizeSet
 }
 
+type ReadScope uint8
+
+const (
+	AllProjects ReadScope = iota
+	PublicProjects
+)
+
 type Filter struct {
 	ProjectKey string
 	State      domain.State
 	Limit      int
 	Cursor     string
+	Scope      ReadScope
 }
 
 type Cards struct {
@@ -174,16 +182,29 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (domain.Task, bool
 	return s.repo.CreateTask(ctx, params)
 }
 
-func (s *Service) Get(ctx context.Context, key string) (domain.Task, error) {
-	return s.repo.GetTask(ctx, key)
+func (s *Service) Get(ctx context.Context, actor domain.Actor, key string) (domain.Task, error) {
+	scope, err := readScope(actor)
+	if err != nil {
+		return domain.Task{}, err
+	}
+	return s.repo.GetTask(ctx, key, scope)
 }
 
-func (s *Service) List(ctx context.Context, f Filter) ([]domain.Task, string, error) {
+func (s *Service) List(ctx context.Context, actor domain.Actor, f Filter) ([]domain.Task, string, error) {
+	scope, err := readScope(actor)
+	if err != nil {
+		return nil, "", err
+	}
+	f.Scope = scope
 	return s.repo.ListTasks(ctx, f)
 }
 
-func (s *Service) ListProjects(ctx context.Context) ([]Project, error) {
-	return s.repo.ListProjects(ctx)
+func (s *Service) ListProjects(ctx context.Context, actor domain.Actor) ([]Project, error) {
+	scope, err := readScope(actor)
+	if err != nil {
+		return nil, err
+	}
+	return s.repo.ListProjects(ctx, scope)
 }
 
 func (s *Service) ListPublicProjects(ctx context.Context) ([]Project, error) {
@@ -235,9 +256,13 @@ func (s *Service) CreateProject(ctx context.Context, p CreateProjectParams) (Pro
 	return project, nil
 }
 
-func (s *Service) Board(ctx context.Context, projectKey string) (Board, error) {
+func (s *Service) Board(ctx context.Context, actor domain.Actor, projectKey string) (Board, error) {
+	scope, err := readScope(actor)
+	if err != nil {
+		return Board{}, err
+	}
 	generatedAt := s.clock.Now()
-	tasks, err := s.repo.ListBoardTasks(ctx, projectKey)
+	tasks, err := s.repo.ListBoardTasks(ctx, projectKey, scope)
 	if err != nil {
 		return Board{}, err
 	}
@@ -272,7 +297,7 @@ func (s *Service) Move(
 		return domain.Task{}, err
 	}
 
-	t, err := s.repo.GetTask(ctx, key)
+	t, err := s.repo.GetTask(ctx, key, AllProjects)
 	if err != nil {
 		return domain.Task{}, err
 	}
@@ -320,7 +345,7 @@ func (s *Service) Update(
 		}
 	}
 
-	current, err := s.repo.GetTask(ctx, key)
+	current, err := s.repo.GetTask(ctx, key, AllProjects)
 	if err != nil {
 		return domain.Task{}, err
 	}
@@ -406,7 +431,7 @@ func (s *Service) Acquire(ctx context.Context, key string, agent domain.Actor) (
 	if err := viewerForbidden(agent); err != nil {
 		return domain.Task{}, domain.Lease{}, err
 	}
-	task, err := s.repo.GetTask(ctx, key)
+	task, err := s.repo.GetTask(ctx, key, AllProjects)
 	if err != nil {
 		return domain.Task{}, domain.Lease{}, err
 	}
@@ -442,7 +467,7 @@ func (s *Service) Renew(ctx context.Context, key string, leaseID int64, agent do
 	if agent.Kind != domain.Agent {
 		return domain.Lease{}, forbiddenLease("only an agent may renew a lease")
 	}
-	if _, err := s.repo.GetTask(ctx, key); err != nil {
+	if _, err := s.repo.GetTask(ctx, key, AllProjects); err != nil {
 		return domain.Lease{}, err
 	}
 
@@ -472,7 +497,7 @@ func (s *Service) Release(ctx context.Context, key string, leaseID int64, agent 
 	if agent.Kind != domain.Agent {
 		return forbiddenLease("only an agent may release a lease")
 	}
-	if _, err := s.repo.GetTask(ctx, key); err != nil {
+	if _, err := s.repo.GetTask(ctx, key, AllProjects); err != nil {
 		return err
 	}
 
@@ -500,7 +525,7 @@ func (s *Service) Deliver(
 	if err := viewerForbidden(actor); err != nil {
 		return domain.Task{}, domain.Delivery{}, err
 	}
-	task, err := s.repo.GetTask(ctx, key)
+	task, err := s.repo.GetTask(ctx, key, AllProjects)
 	if err != nil {
 		return domain.Task{}, domain.Delivery{}, err
 	}
@@ -525,7 +550,7 @@ func (s *Service) Deliver(
 		return domain.Task{}, domain.Delivery{}, err
 	}
 
-	deliveries, err := s.repo.ListDeliveries(ctx, key)
+	deliveries, err := s.repo.ListDeliveries(ctx, key, AllProjects)
 	if err != nil {
 		return domain.Task{}, domain.Delivery{}, err
 	}
@@ -535,25 +560,29 @@ func (s *Service) Deliver(
 	return next, deliveries[len(deliveries)-1], nil
 }
 
-func (s *Service) Detail(ctx context.Context, key string) (Detail, error) {
-	task, err := s.repo.GetTask(ctx, key)
+func (s *Service) Detail(ctx context.Context, actor domain.Actor, key string) (Detail, error) {
+	scope, err := readScope(actor)
+	if err != nil {
+		return Detail{}, err
+	}
+	task, err := s.repo.GetTask(ctx, key, scope)
 	if err != nil {
 		return Detail{}, err
 	}
 
-	movements, err := s.repo.ListMovements(ctx, key)
+	movements, err := s.repo.ListMovements(ctx, key, scope)
 	if err != nil {
 		return Detail{}, err
 	}
-	leases, err := s.repo.ListLeases(ctx, key)
+	leases, err := s.repo.ListLeases(ctx, key, scope)
 	if err != nil {
 		return Detail{}, err
 	}
-	deliveries, err := s.repo.ListDeliveries(ctx, key)
+	deliveries, err := s.repo.ListDeliveries(ctx, key, scope)
 	if err != nil {
 		return Detail{}, err
 	}
-	comments, err := s.repo.ListComments(ctx, key)
+	comments, err := s.repo.ListComments(ctx, key, scope)
 	if err != nil {
 		return Detail{}, err
 	}
@@ -567,39 +596,55 @@ func (s *Service) Detail(ctx context.Context, key string) (Detail, error) {
 	}, nil
 }
 
-func (s *Service) Movements(ctx context.Context, key string) ([]domain.Movement, error) {
-	if _, err := s.repo.GetTask(ctx, key); err != nil {
+func (s *Service) Movements(ctx context.Context, actor domain.Actor, key string) ([]domain.Movement, error) {
+	scope, err := readScope(actor)
+	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListMovements(ctx, key)
+	if _, err := s.repo.GetTask(ctx, key, scope); err != nil {
+		return nil, err
+	}
+	return s.repo.ListMovements(ctx, key, scope)
 }
 
-func (s *Service) Leases(ctx context.Context, key string) ([]domain.Lease, error) {
-	if _, err := s.repo.GetTask(ctx, key); err != nil {
+func (s *Service) Leases(ctx context.Context, actor domain.Actor, key string) ([]domain.Lease, error) {
+	scope, err := readScope(actor)
+	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListLeases(ctx, key)
+	if _, err := s.repo.GetTask(ctx, key, scope); err != nil {
+		return nil, err
+	}
+	return s.repo.ListLeases(ctx, key, scope)
 }
 
-func (s *Service) Deliveries(ctx context.Context, key string) ([]domain.Delivery, error) {
-	if _, err := s.repo.GetTask(ctx, key); err != nil {
+func (s *Service) Deliveries(ctx context.Context, actor domain.Actor, key string) ([]domain.Delivery, error) {
+	scope, err := readScope(actor)
+	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListDeliveries(ctx, key)
+	if _, err := s.repo.GetTask(ctx, key, scope); err != nil {
+		return nil, err
+	}
+	return s.repo.ListDeliveries(ctx, key, scope)
 }
 
-func (s *Service) Comments(ctx context.Context, key string) ([]domain.Comment, error) {
-	if _, err := s.repo.GetTask(ctx, key); err != nil {
+func (s *Service) Comments(ctx context.Context, actor domain.Actor, key string) ([]domain.Comment, error) {
+	scope, err := readScope(actor)
+	if err != nil {
 		return nil, err
 	}
-	return s.repo.ListComments(ctx, key)
+	if _, err := s.repo.GetTask(ctx, key, scope); err != nil {
+		return nil, err
+	}
+	return s.repo.ListComments(ctx, key, scope)
 }
 
 func (s *Service) AddComment(ctx context.Context, key string, actor domain.Actor, body string) (domain.Comment, error) {
 	if err := viewerForbidden(actor); err != nil {
 		return domain.Comment{}, err
 	}
-	if _, err := s.repo.GetTask(ctx, key); err != nil {
+	if _, err := s.repo.GetTask(ctx, key, AllProjects); err != nil {
 		return domain.Comment{}, err
 	}
 	if err := domain.ValidateComment(body); err != nil {
@@ -631,6 +676,17 @@ func (s *Service) AddComment(ctx context.Context, key string, actor domain.Actor
 
 func forbiddenLease(msg string) *domain.RuleError {
 	return &domain.RuleError{Code: domain.CodeForbidden, Msg: msg}
+}
+
+func readScope(actor domain.Actor) (ReadScope, error) {
+	switch actor.Kind {
+	case domain.Human, domain.Agent:
+		return AllProjects, nil
+	case domain.Viewer:
+		return PublicProjects, nil
+	default:
+		return AllProjects, &domain.RuleError{Code: domain.CodeForbidden, Msg: "unknown actor kind"}
+	}
 }
 
 func viewerForbidden(actor domain.Actor) error {

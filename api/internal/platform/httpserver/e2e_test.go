@@ -88,14 +88,24 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	tasksHandler := taskshttp.New(tasksService)
 	usersHandler := usershttp.New(usersService, "https://mise.example")
-	server.HandleFunc("GET /api/me", false, usersHandler.Me)
+	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
-	server.HandleFunc("GET /api/projects", false, tasksHandler.Projects)
+	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)
 	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
-	server.HandleFunc("GET /api/board", false, tasksHandler.Board)
-	server.HandleFunc("GET /api/tasks", false, tasksHandler.List)
+	server.HandleReadFunc("GET /api/board", tasksHandler.Board)
+	server.HandleReadFunc("GET /api/tasks", tasksHandler.List)
 	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)
+	server.HandleReadFunc("GET /api/tasks/{key}", tasksHandler.Detail)
 	server.HandleFunc("PATCH /api/tasks/{key}", false, tasksHandler.Patch)
+	server.HandleReadFunc("GET /api/tasks/{key}/movements", tasksHandler.Movements)
+	server.HandleReadFunc("GET /api/tasks/{key}/leases", tasksHandler.ListLeases)
+	server.HandleFunc("POST /api/tasks/{key}/leases", false, tasksHandler.AcquireLease)
+	server.HandleFunc("PATCH /api/tasks/{key}/leases/{id}", false, tasksHandler.RenewLease)
+	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
+	server.HandleReadFunc("GET /api/tasks/{key}/deliveries", tasksHandler.ListDeliveries)
+	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
+	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
+	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
 	server.HandleFunc("DELETE /api/sessions/current", false, usersHandler.Logout)
 	server.HandleFunc("POST /api/signup-requests", true, usersHandler.RequestSignup)
@@ -192,12 +202,21 @@ func TestHealthAndAuthentication(t *testing.T) {
 
 	for _, path := range []string{"/api/me", "/api/projects", "/api/board", "/api/tasks"} {
 		resp := env.request(t, http.MethodGet, path, nil, nil)
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Errorf("%s without credential status = %d, want 401", path, resp.StatusCode)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s without credential status = %d, want 200", path, resp.StatusCode)
 		}
-		if body := decodeError(t, resp); body.Error != "unauthorized" {
-			t.Errorf("%s error = %q, want unauthorized", path, body.Error)
-		}
+		resp.Body.Close()
+	}
+
+	resp = env.request(t, http.MethodGet, "/api/me", nil, nil)
+	visitor := decode[struct {
+		ID    int64  `json:"id"`
+		Name  string `json:"name"`
+		Kind  string `json:"kind"`
+		Email string `json:"email"`
+	}](t, resp)
+	if visitor.ID != 0 || visitor.Name != "Visitor" || visitor.Kind != "viewer" || visitor.Email != "" {
+		t.Fatalf("visitor me = %+v", visitor)
 	}
 
 	resp = env.request(t, http.MethodGet, "/api/me", nil, bearer)

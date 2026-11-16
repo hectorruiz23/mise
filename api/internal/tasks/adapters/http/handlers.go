@@ -130,7 +130,8 @@ func (h *Handler) Patch(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) List(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
@@ -158,7 +159,7 @@ func (h *Handler) List(w nethttp.ResponseWriter, r *nethttp.Request) {
 		filter.Limit = limit
 	}
 
-	tasks, nextCursor, err := h.service.List(r.Context(), filter)
+	tasks, nextCursor, err := h.service.List(r.Context(), actorOf(principal), filter)
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -175,11 +176,12 @@ func (h *Handler) List(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) Board(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
-	board, err := h.service.Board(r.Context(), r.URL.Query().Get("project"))
+	board, err := h.service.Board(r.Context(), actorOf(principal), r.URL.Query().Get("project"))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -208,11 +210,12 @@ func (h *Handler) Board(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) Projects(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
-	projects, err := h.service.ListProjects(r.Context())
+	projects, err := h.service.ListProjects(r.Context(), actorOf(principal))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -262,11 +265,12 @@ func (h *Handler) CreateProject(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) Detail(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
-	detail, err := h.service.Detail(r.Context(), r.PathValue("key"))
+	detail, err := h.service.Detail(r.Context(), actorOf(principal), r.PathValue("key"))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -282,11 +286,12 @@ func (h *Handler) Detail(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) Movements(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
-	movements, err := h.service.Movements(r.Context(), r.PathValue("key"))
+	movements, err := h.service.Movements(r.Context(), actorOf(principal), r.PathValue("key"))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -295,11 +300,12 @@ func (h *Handler) Movements(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) ListLeases(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
-	leases, err := h.service.Leases(r.Context(), r.PathValue("key"))
+	leases, err := h.service.Leases(r.Context(), actorOf(principal), r.PathValue("key"))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -341,7 +347,7 @@ func (h *Handler) RenewLease(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	task, err := h.service.Get(r.Context(), key)
+	task, err := h.service.Get(r.Context(), actorOf(principal), key)
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -367,7 +373,7 @@ func (h *Handler) ReleaseLease(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	task, err := h.service.Get(r.Context(), key)
+	task, err := h.service.Get(r.Context(), actorOf(principal), key)
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -377,11 +383,12 @@ func (h *Handler) ReleaseLease(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) ListDeliveries(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
-	deliveries, err := h.service.Deliveries(r.Context(), r.PathValue("key"))
+	deliveries, err := h.service.Deliveries(r.Context(), actorOf(principal), r.PathValue("key"))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -417,11 +424,12 @@ func (h *Handler) CreateDelivery(w nethttp.ResponseWriter, r *nethttp.Request) {
 }
 
 func (h *Handler) ListComments(w nethttp.ResponseWriter, r *nethttp.Request) {
-	if _, ok := authenticated(w, r); !ok {
+	principal, ok := authenticated(w, r)
+	if !ok {
 		return
 	}
 
-	comments, err := h.service.Comments(r.Context(), r.PathValue("key"))
+	comments, err := h.service.Comments(r.Context(), actorOf(principal), r.PathValue("key"))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -449,7 +457,7 @@ func (h *Handler) CreateComment(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	task, err := h.service.Get(r.Context(), key)
+	task, err := h.service.Get(r.Context(), actorOf(principal), key)
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return

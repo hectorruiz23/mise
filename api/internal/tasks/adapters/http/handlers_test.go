@@ -76,19 +76,24 @@ func newTasksEnv(t *testing.T) *tasksEnv {
 	}
 	tasksHandler := taskshttp.New(tasksService)
 	usersHandler := usershttp.New(usersService, testOrigin)
-	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)
+	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
-	server.HandleFunc("GET /api/projects", false, tasksHandler.Projects)
+	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)
 	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
+	server.HandleReadFunc("GET /api/board", tasksHandler.Board)
+	server.HandleReadFunc("GET /api/tasks", tasksHandler.List)
+	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)
+	server.HandleReadFunc("GET /api/tasks/{key}", tasksHandler.Detail)
 	server.HandleFunc("PATCH /api/tasks/{key}", false, tasksHandler.Patch)
-	server.HandleFunc("GET /api/tasks/{key}", false, func(w http.ResponseWriter, r *http.Request) {
-		task, err := tasksService.Get(r.Context(), r.PathValue("key"))
-		if err != nil {
-			httpserver.WriteRuleError(w, err)
-			return
-		}
-		httpserver.WriteJSON(w, http.StatusOK, task)
-	})
+	server.HandleReadFunc("GET /api/tasks/{key}/movements", tasksHandler.Movements)
+	server.HandleReadFunc("GET /api/tasks/{key}/leases", tasksHandler.ListLeases)
+	server.HandleFunc("POST /api/tasks/{key}/leases", false, tasksHandler.AcquireLease)
+	server.HandleFunc("PATCH /api/tasks/{key}/leases/{id}", false, tasksHandler.RenewLease)
+	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
+	server.HandleReadFunc("GET /api/tasks/{key}/deliveries", tasksHandler.ListDeliveries)
+	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
+	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
+	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
 
 	httpServer := httptest.NewServer(server.Handler())

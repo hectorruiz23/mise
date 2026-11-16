@@ -22,7 +22,7 @@ func (r untouchedRepo) CreateTask(context.Context, app.CreateParams) (domain.Tas
 	return domain.Task{}, false, nil
 }
 
-func (r untouchedRepo) GetTask(context.Context, string) (domain.Task, error) {
+func (r untouchedRepo) GetTask(context.Context, string, app.ReadScope) (domain.Task, error) {
 	r.touch("GetTask")
 	return domain.Task{}, nil
 }
@@ -32,7 +32,7 @@ func (r untouchedRepo) ListTasks(context.Context, app.Filter) ([]domain.Task, st
 	return nil, "", nil
 }
 
-func (r untouchedRepo) ListProjects(context.Context) ([]app.Project, error) {
+func (r untouchedRepo) ListProjects(context.Context, app.ReadScope) ([]app.Project, error) {
 	r.touch("ListProjects")
 	return nil, nil
 }
@@ -47,7 +47,7 @@ func (r untouchedRepo) CreateProject(context.Context, app.Project, int64) error 
 	return nil
 }
 
-func (r untouchedRepo) ListBoardTasks(context.Context, string) ([]domain.Task, error) {
+func (r untouchedRepo) ListBoardTasks(context.Context, string, app.ReadScope) ([]domain.Task, error) {
 	r.touch("ListBoardTasks")
 	return nil, nil
 }
@@ -92,17 +92,17 @@ func (r untouchedRepo) Deliver(context.Context, domain.Task, domain.Delivery, do
 	return nil
 }
 
-func (r untouchedRepo) ListLeases(context.Context, string) ([]domain.Lease, error) {
+func (r untouchedRepo) ListLeases(context.Context, string, app.ReadScope) ([]domain.Lease, error) {
 	r.touch("ListLeases")
 	return nil, nil
 }
 
-func (r untouchedRepo) ListDeliveries(context.Context, string) ([]domain.Delivery, error) {
+func (r untouchedRepo) ListDeliveries(context.Context, string, app.ReadScope) ([]domain.Delivery, error) {
 	r.touch("ListDeliveries")
 	return nil, nil
 }
 
-func (r untouchedRepo) ListMovements(context.Context, string) ([]domain.Movement, error) {
+func (r untouchedRepo) ListMovements(context.Context, string, app.ReadScope) ([]domain.Movement, error) {
 	r.touch("ListMovements")
 	return nil, nil
 }
@@ -112,7 +112,7 @@ func (r untouchedRepo) CreateComment(context.Context, domain.Comment) (domain.Co
 	return domain.Comment{}, nil
 }
 
-func (r untouchedRepo) ListComments(context.Context, string) ([]domain.Comment, error) {
+func (r untouchedRepo) ListComments(context.Context, string, app.ReadScope) ([]domain.Comment, error) {
 	r.touch("ListComments")
 	return nil, nil
 }

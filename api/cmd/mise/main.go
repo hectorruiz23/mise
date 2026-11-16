@@ -96,29 +96,7 @@ func run() error {
 
 	tasksHandler := taskshttp.New(tasksService)
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
-	server.HandleFunc("GET /api/me", false, usersHandler.Me)
-	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
-	server.HandleFunc("GET /api/projects", false, tasksHandler.Projects)
-	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
-	server.HandleFunc("GET /api/board", false, tasksHandler.Board)
-	server.HandleFunc("GET /api/tasks", false, tasksHandler.List)
-	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)
-	server.HandleFunc("GET /api/tasks/{key}", false, tasksHandler.Detail)
-	server.HandleFunc("PATCH /api/tasks/{key}", false, tasksHandler.Patch)
-	server.HandleFunc("GET /api/tasks/{key}/movements", false, tasksHandler.Movements)
-	server.HandleFunc("GET /api/tasks/{key}/leases", false, tasksHandler.ListLeases)
-	server.HandleFunc("POST /api/tasks/{key}/leases", false, tasksHandler.AcquireLease)
-	server.HandleFunc("PATCH /api/tasks/{key}/leases/{id}", false, tasksHandler.RenewLease)
-	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
-	server.HandleFunc("GET /api/tasks/{key}/deliveries", false, tasksHandler.ListDeliveries)
-	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
-	server.HandleFunc("GET /api/tasks/{key}/comments", false, tasksHandler.ListComments)
-	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
-	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
-	server.HandleFunc("DELETE /api/sessions/current", false, usersHandler.Logout)
-	server.HandleFunc("POST /api/signup-requests", true, usersHandler.RequestSignup)
-	server.HandleFunc("GET /api/signup-requests/{id}", true, usersHandler.SignupStatus)
-	server.HandleFunc("POST /api/signup-requests/{id}/claim", true, usersHandler.ClaimSignup)
+	registerRoutes(server, tasksHandler, usersHandler)
 	server.SetFallback(panel.Handler())
 
 	listener, err := net.Listen("tcp", cfg.addr)
@@ -156,6 +134,32 @@ func run() error {
 		logger.Info("stopped")
 		return nil
 	}
+}
+
+func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler) {
+	server.HandleReadFunc("GET /api/me", usersHandler.Me)
+	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
+	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)
+	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
+	server.HandleReadFunc("GET /api/board", tasksHandler.Board)
+	server.HandleReadFunc("GET /api/tasks", tasksHandler.List)
+	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)
+	server.HandleReadFunc("GET /api/tasks/{key}", tasksHandler.Detail)
+	server.HandleFunc("PATCH /api/tasks/{key}", false, tasksHandler.Patch)
+	server.HandleReadFunc("GET /api/tasks/{key}/movements", tasksHandler.Movements)
+	server.HandleReadFunc("GET /api/tasks/{key}/leases", tasksHandler.ListLeases)
+	server.HandleFunc("POST /api/tasks/{key}/leases", false, tasksHandler.AcquireLease)
+	server.HandleFunc("PATCH /api/tasks/{key}/leases/{id}", false, tasksHandler.RenewLease)
+	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
+	server.HandleReadFunc("GET /api/tasks/{key}/deliveries", tasksHandler.ListDeliveries)
+	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
+	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
+	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
+	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
+	server.HandleFunc("DELETE /api/sessions/current", false, usersHandler.Logout)
+	server.HandleFunc("POST /api/signup-requests", true, usersHandler.RequestSignup)
+	server.HandleFunc("GET /api/signup-requests/{id}", true, usersHandler.SignupStatus)
+	server.HandleFunc("POST /api/signup-requests/{id}/claim", true, usersHandler.ClaimSignup)
 }
 
 func loadConfig(args []string) (config, error) {

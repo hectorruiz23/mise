@@ -127,17 +127,28 @@ func (r *Repo) CreateTask(ctx context.Context, p app.CreateParams) (domain.Task,
 	return task, replayed, nil
 }
 
-func (r *Repo) GetTask(ctx context.Context, key string) (domain.Task, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT key, project_key, title, notes, acceptance, state, priority, size,
-		       created_by, version, created_at, updated_at, closed_at
-		FROM tasks WHERE key = ?`, key)
+func (r *Repo) GetTask(ctx context.Context, key string, scope app.ReadScope) (domain.Task, error) {
+	query := `
+		SELECT t.key, t.project_key, t.title, t.notes, t.acceptance, t.state, t.priority, t.size,
+		       t.created_by, t.version, t.created_at, t.updated_at, t.closed_at
+		FROM tasks t`
+	args := make([]any, 0, 1)
+	if scope == app.PublicProjects {
+		query += ` JOIN projects p ON p.key = t.project_key`
+	}
+	query += ` WHERE t.key = ?`
+	args = append(args, key)
+	if scope == app.PublicProjects {
+		query += ` AND p.is_public = 1`
+	}
+
+	row := r.db.QueryRowContext(ctx, query, args...)
 
 	task, err := scanTask(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Task{}, &domain.RuleError{
 			Code: app.CodeNotFound,
-			Msg:  fmt.Sprintf("unknown task %q", key),
+			Msg:  "task not found",
 		}
 	}
 	if err != nil {
@@ -173,23 +184,31 @@ func (r *Repo) ListTasks(ctx context.Context, f app.Filter) ([]domain.Task, stri
 
 	query := strings.Builder{}
 	query.WriteString(`
-		SELECT key, project_key, title, notes, acceptance, state, priority, size,
-		       created_by, version, created_at, updated_at, closed_at
-		FROM tasks WHERE 1 = 1`)
+		SELECT t.key, t.project_key, t.title, t.notes, t.acceptance, t.state, t.priority, t.size,
+		       t.created_by, t.version, t.created_at, t.updated_at, t.closed_at
+		FROM tasks t`)
+	if f.Scope == app.PublicProjects {
+		query.WriteString(` JOIN projects p ON p.key = t.project_key`)
+	}
+	query.WriteString(`
+		WHERE 1 = 1`)
 	args := make([]any, 0, 5)
+	if f.Scope == app.PublicProjects {
+		query.WriteString(` AND p.is_public = 1`)
+	}
 	if f.ProjectKey != "" {
-		query.WriteString(` AND project_key = ?`)
+		query.WriteString(` AND t.project_key = ?`)
 		args = append(args, f.ProjectKey)
 	}
 	if f.State != "" {
-		query.WriteString(` AND state = ?`)
+		query.WriteString(` AND t.state = ?`)
 		args = append(args, string(f.State))
 	}
 	if position != nil {
-		query.WriteString(` AND (created_at > ? OR (created_at = ? AND key > ?))`)
+		query.WriteString(` AND (t.created_at > ? OR (t.created_at = ? AND t.key > ?))`)
 		args = append(args, position.CreatedAt, position.CreatedAt, position.Key)
 	}
-	query.WriteString(` ORDER BY created_at, key LIMIT ?`)
+	query.WriteString(` ORDER BY t.created_at, t.key LIMIT ?`)
 	args = append(args, limit+1)
 
 	rows, err := r.db.QueryContext(ctx, query.String(), args...)
@@ -225,15 +244,15 @@ func (r *Repo) ListTasks(ctx context.Context, f app.Filter) ([]domain.Task, stri
 	return tasks, nextCursor, nil
 }
 
-func (r *Repo) ListProjects(ctx context.Context) ([]app.Project, error) {
-	return r.listProjects(ctx, false)
+func (r *Repo) ListProjects(ctx context.Context, scope app.ReadScope) ([]app.Project, error) {
+	return r.listProjects(ctx, scope, false)
 }
 
 func (r *Repo) ListPublicProjects(ctx context.Context) ([]app.Project, error) {
-	return r.listProjects(ctx, true)
+	return r.listProjects(ctx, app.PublicProjects, true)
 }
 
-func (r *Repo) listProjects(ctx context.Context, public bool) ([]app.Project, error) {
+func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrder bool) ([]app.Project, error) {
 	label := "list projects"
 	query := `
 		SELECT p.key, p.name, p.is_public, p.sort_order, p.description, p.repo_url,
@@ -251,9 +270,11 @@ func (r *Repo) listProjects(ctx context.Context, public bool) ([]app.Project, er
 		    FROM tasks
 		    GROUP BY project_key
 		) t ON t.project_key = p.key`
-	if public {
-		label = "list public projects"
+	if scope == app.PublicProjects {
 		query += ` WHERE p.is_public = 1`
+	}
+	if publicOrder {
+		label = "list public projects"
 		query += ` ORDER BY p.sort_order, p.key`
 	} else {
 		query += ` ORDER BY p.rowid`
@@ -346,17 +367,24 @@ func (r *Repo) CreateProject(ctx context.Context, project app.Project, now int64
 	})
 }
 
-func (r *Repo) ListBoardTasks(ctx context.Context, projectKey string) ([]domain.Task, error) {
+func (r *Repo) ListBoardTasks(ctx context.Context, projectKey string, scope app.ReadScope) ([]domain.Task, error) {
 	query := `
-		SELECT key, project_key, title, notes, acceptance, state, priority, size,
-		       created_by, version, created_at, updated_at, closed_at
-		FROM tasks`
+		SELECT t.key, t.project_key, t.title, t.notes, t.acceptance, t.state, t.priority, t.size,
+		       t.created_by, t.version, t.created_at, t.updated_at, t.closed_at
+		FROM tasks t`
+	if scope == app.PublicProjects {
+		query += ` JOIN projects p ON p.key = t.project_key`
+	}
+	query += ` WHERE 1 = 1`
 	args := make([]any, 0, 1)
+	if scope == app.PublicProjects {
+		query += ` AND p.is_public = 1`
+	}
 	if projectKey != "" {
-		query += ` WHERE project_key = ?`
+		query += ` AND t.project_key = ?`
 		args = append(args, projectKey)
 	}
-	query += ` ORDER BY created_at, key`
+	query += ` ORDER BY t.created_at, t.key`
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -630,13 +658,25 @@ func (r *Repo) Deliver(ctx context.Context, t domain.Task, d domain.Delivery, m 
 	})
 }
 
-func (r *Repo) ListLeases(ctx context.Context, taskKey string) ([]domain.Lease, error) {
-	rows, err := r.db.QueryContext(ctx, `
+func (r *Repo) ListLeases(ctx context.Context, taskKey string, scope app.ReadScope) ([]domain.Lease, error) {
+	query := `
 		SELECT l.id, l.task_key, l.agent_id, l.created_at, l.expires_at,
 		       l.released_at, l.closed_reason, u.name, u.kind
 		FROM leases l
 		JOIN users u ON u.id = l.agent_id
-		WHERE l.task_key = ? ORDER BY l.id`, taskKey)
+		JOIN tasks t ON t.key = l.task_key`
+	args := make([]any, 0, 1)
+	if scope == app.PublicProjects {
+		query += ` JOIN projects p ON p.key = t.project_key`
+	}
+	query += ` WHERE l.task_key = ?`
+	args = append(args, taskKey)
+	if scope == app.PublicProjects {
+		query += ` AND p.is_public = 1`
+	}
+	query += ` ORDER BY l.id`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list leases for %q: %w", taskKey, err)
 	}
@@ -656,13 +696,25 @@ func (r *Repo) ListLeases(ctx context.Context, taskKey string) ([]domain.Lease, 
 	return leases, nil
 }
 
-func (r *Repo) ListDeliveries(ctx context.Context, taskKey string) ([]domain.Delivery, error) {
-	rows, err := r.db.QueryContext(ctx, `
+func (r *Repo) ListDeliveries(ctx context.Context, taskKey string, scope app.ReadScope) ([]domain.Delivery, error) {
+	query := `
 		SELECT d.id, d.task_key, d.lease_id, d.summary, d.evidence, d.pr_url, d.created_at,
 		       d.actor_id, u.name, u.kind
 		FROM deliveries d
 		JOIN users u ON u.id = d.actor_id
-		WHERE d.task_key = ? ORDER BY d.id`, taskKey)
+		JOIN tasks t ON t.key = d.task_key`
+	args := make([]any, 0, 1)
+	if scope == app.PublicProjects {
+		query += ` JOIN projects p ON p.key = t.project_key`
+	}
+	query += ` WHERE d.task_key = ?`
+	args = append(args, taskKey)
+	if scope == app.PublicProjects {
+		query += ` AND p.is_public = 1`
+	}
+	query += ` ORDER BY d.id`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list deliveries for %q: %w", taskKey, err)
 	}
@@ -682,13 +734,25 @@ func (r *Repo) ListDeliveries(ctx context.Context, taskKey string) ([]domain.Del
 	return deliveries, nil
 }
 
-func (r *Repo) ListMovements(ctx context.Context, taskKey string) ([]domain.Movement, error) {
-	rows, err := r.db.QueryContext(ctx, `
+func (r *Repo) ListMovements(ctx context.Context, taskKey string, scope app.ReadScope) ([]domain.Movement, error) {
+	query := `
 		SELECT m.task_key, m.from_state, m.to_state, m.actor_id, u.name, u.kind,
 		       m.reason, m.task_version, m.at
 		FROM task_movements m
 		JOIN users u ON u.id = m.actor_id
-		WHERE m.task_key = ? ORDER BY m.id`, taskKey)
+		JOIN tasks t ON t.key = m.task_key`
+	args := make([]any, 0, 1)
+	if scope == app.PublicProjects {
+		query += ` JOIN projects p ON p.key = t.project_key`
+	}
+	query += ` WHERE m.task_key = ?`
+	args = append(args, taskKey)
+	if scope == app.PublicProjects {
+		query += ` AND p.is_public = 1`
+	}
+	query += ` ORDER BY m.id`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list movements for %q: %w", taskKey, err)
 	}
@@ -724,12 +788,24 @@ func (r *Repo) CreateComment(ctx context.Context, c domain.Comment) (domain.Comm
 	return c, nil
 }
 
-func (r *Repo) ListComments(ctx context.Context, taskKey string) ([]domain.Comment, error) {
-	rows, err := r.db.QueryContext(ctx, `
+func (r *Repo) ListComments(ctx context.Context, taskKey string, scope app.ReadScope) ([]domain.Comment, error) {
+	query := `
 		SELECT c.id, c.task_key, c.actor_id, c.body, c.created_at, u.name, u.kind
 		FROM comments c
 		JOIN users u ON u.id = c.actor_id
-		WHERE c.task_key = ? ORDER BY c.id`, taskKey)
+		JOIN tasks t ON t.key = c.task_key`
+	args := make([]any, 0, 1)
+	if scope == app.PublicProjects {
+		query += ` JOIN projects p ON p.key = t.project_key`
+	}
+	query += ` WHERE c.task_key = ?`
+	args = append(args, taskKey)
+	if scope == app.PublicProjects {
+		query += ` AND p.is_public = 1`
+	}
+	query += ` ORDER BY c.id`
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list comments for %q: %w", taskKey, err)
 	}
