@@ -44,7 +44,25 @@ export type Task = {
 
 export type Project = { key: string; name: string }
 
-export type Me = { id: number; name: string; kind: 'human' | 'agent'; email: string }
+export type AuthenticatedMe = {
+  id: number
+  name: string
+  kind: 'human' | 'agent'
+  email: string
+}
+
+export type ViewerMe = {
+  id: 0
+  name: string
+  kind: 'viewer'
+  email: ''
+}
+
+export type Me = AuthenticatedMe | ViewerMe
+
+export function isViewer(me: Me): me is ViewerMe {
+  return me.kind === 'viewer'
+}
 
 export type Actor = { id: number; name: string; kind: 'human' | 'agent' }
 

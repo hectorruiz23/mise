@@ -1,52 +1,61 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError } from './api'
-import type { Me } from './types'
+import { isViewer, type Me } from './types'
 import { Header } from './components/Header'
 import { Login } from './components/Login'
 import { Panel } from './components/Panel'
 import { Signup } from './components/Signup'
 
+type Screen = 'panel' | 'login' | 'signup'
+
 export default function App() {
   const [checking, setChecking] = useState(true)
-  const [user, setUser] = useState<Me | null>(null)
-  const [screen, setScreen] = useState<'login' | 'signup'>('login')
-  const [authNotice, setAuthNotice] = useState('')
+  const [error, setError] = useState('')
+  const [me, setMe] = useState<Me | null>(null)
+  const [screen, setScreen] = useState<Screen>('panel')
+  const [notice, setNotice] = useState('')
+  const attempt = useRef(0)
 
-  useEffect(() => {
-    let current = true
-    api
-      .me()
-      .then(me => {
-        if (current) setUser(me)
-      })
-      .catch(caught => {
-        if (!current) return
-        if (!(caught instanceof ApiError && caught.status === 401)) {
-          setAuthNotice(caught instanceof ApiError ? caught.message : 'Cannot reach the server.')
-        }
-      })
-      .finally(() => {
-        if (current) setChecking(false)
-      })
-    return () => {
-      current = false
+  const loadMe = useCallback(async () => {
+    const current = ++attempt.current
+    setChecking(true)
+    setError('')
+    try {
+      const next = await api.me()
+      if (current !== attempt.current) return
+      setMe(next)
+    } catch (caught) {
+      if (current !== attempt.current) return
+      setMe(null)
+      if (caught instanceof ApiError && caught.status === 401) {
+        setScreen('login')
+        setNotice('Your session expired. Sign in again.')
+      } else {
+        setError(caught instanceof ApiError ? caught.message : 'Cannot reach the server.')
+      }
+    } finally {
+      if (current === attempt.current) setChecking(false)
     }
   }, [])
 
+  useEffect(() => {
+    void loadMe()
+  }, [loadMe])
+
   const sessionExpired = useCallback(() => {
-    setUser(null)
-    setScreen('login')
-    setAuthNotice('Your session expired. Sign in again.')
-  }, [])
+    setNotice('Your session expired. Sign in again.')
+    setScreen('panel')
+    void loadMe()
+  }, [loadMe])
 
   async function signOut() {
     try {
       await api.logout()
     } catch {
     }
-    setUser(null)
-    setScreen('login')
-    setAuthNotice('Signed out.')
+    setNotice('Signed out.')
+    setScreen('panel')
+    await loadMe()
   }
 
   if (checking) {
@@ -57,30 +66,64 @@ export default function App() {
     )
   }
 
-  if (!user) {
-    if (screen === 'signup') {
-      return <Signup onBack={() => setScreen('login')} />
-    }
+  if (error) {
+    return (
+      <main className="contenedor principal">
+        <p className="error" role="alert">
+          {error}
+        </p>
+        <button type="button" className="secundario" onClick={() => void loadMe()}>
+          Retry
+        </button>
+      </main>
+    )
+  }
+
+  if (screen === 'signup') {
+    return <Signup onBack={() => setScreen('login')} />
+  }
+
+  if (screen === 'login') {
     return (
       <Login
-        key={authNotice}
-        initialError={authNotice}
-        onSignedIn={me => {
-          setUser(me)
-          setAuthNotice('')
+        initialError={notice}
+        onSignedIn={() => {
+          setNotice('')
+          setScreen('panel')
+          void loadMe()
         }}
         onRequestAccess={() => {
           setScreen('signup')
-          setAuthNotice('')
+          setNotice('')
         }}
+        onBack={() => setScreen('panel')}
       />
     )
   }
 
+  if (!me) {
+    return (
+      <main className="contenedor principal">
+        <p className="error" role="alert">
+          Cannot reach the server.
+        </p>
+        <button type="button" className="secundario" onClick={() => void loadMe()}>
+          Retry
+        </button>
+      </main>
+    )
+  }
+
+  const panelKey = isViewer(me) ? 'viewer' : `${me.kind}-${me.id}`
+
   return (
     <>
-      <Header user={user} onSignOut={() => void signOut()} />
-      <Panel onSessionExpired={sessionExpired} />
+      <Header
+        me={me}
+        onSignIn={() => setScreen('login')}
+        onSignOut={() => void signOut()}
+      />
+      <Panel key={panelKey} onSessionExpired={sessionExpired} />
     </>
   )
 }
