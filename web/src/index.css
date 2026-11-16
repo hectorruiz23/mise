@@ -30,9 +30,8 @@ h1 { font-size: 32px; line-height: 1.2; }
 .atencion { display: flex; gap: var(--space-2); }
 .atencion button { min-height: 44px; padding: var(--space-2) var(--space-3); color: var(--text); background: var(--panel); border: 0; font-size: 14px; }
 .atencion .dato { margin-right: var(--space-1); }
-.chip-done, .chip-cierre { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-2) var(--space-3); background: var(--panel); color: var(--text); font-size: 14px; white-space: nowrap; }
-.chip-done { border: 0; }
-.chip-done .dato, .chip-cierre .dato { margin-right: var(--space-1); }
+.chip-cierre { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: var(--space-2) var(--space-3); background: var(--panel); color: var(--text); font-size: 14px; white-space: nowrap; }
+.chip-cierre .dato { margin-right: var(--space-1); }
 .nota-demo { font-size: 12px; color: var(--muted-dark); margin-top: var(--space-2); }
 .herramientas { display: grid; grid-template-columns: minmax(0, 304px) minmax(0, 216px) max-content minmax(0, 1fr); align-items: end; gap: var(--space-4); margin-block: var(--space-6) var(--space-4); }
 .herramientas label { display: block; font-size: 12px; color: var(--muted-dark); margin-bottom: var(--space-1); }
@@ -105,7 +104,7 @@ h4 { font-size: 14px; }
 .saltar { position: absolute; z-index: 10; top: -100px; left: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--paper); color: var(--ink); --focus: var(--ink); }
 .saltar:focus-visible { top: var(--space-2); }
 @media (hover: hover) {
-  .enlace-oscuro:hover, .atencion button:hover, .chip-done:hover { background: var(--panel-soft); }
+  .enlace-oscuro:hover, .atencion button:hover { background: var(--panel-soft); }
   .abrir-tarea:hover, .historial-tarea summary:hover { background: var(--paper-soft); }
   .primario:hover { background: var(--paper-soft); }
   .secundario:hover { background: var(--paper); }
@@ -393,7 +392,7 @@ h4 { font-size: 14px; }
   .celda-accion { grid-area: action; justify-self: end; }
   .tabla-done tbody tr.fila-grupo { display: block; padding: var(--space-4) 0 0; border-bottom: 0; }
   .tabla-done tbody th { padding: 0 0 var(--space-2); }
-  .controles-vista .chip-done, .controles-vista .chip-cierre { min-height: 48px; }
+  .controles-vista .chip-cierre { min-height: 48px; }
   .abrir-fila { display: -webkit-box; min-height: 0; padding: 0; overflow: hidden; font-size: 15px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .accion-fila { min-height: 48px; }
   .pie-tabla { text-align: left; }

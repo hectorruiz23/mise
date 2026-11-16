@@ -14,11 +14,9 @@ export type BoardProps = {
   now: number
   openKey: string | null
   filtered: boolean
-  doneCount: number
   onOpen: (key: string) => void
   onClearFilters: () => void
   onStartReview: () => void
-  onOpenDone: () => void
 }
 
 export function Board({
@@ -29,11 +27,9 @@ export function Board({
   now,
   openKey,
   filtered,
-  doneCount,
   onOpen,
   onClearFilters,
   onStartReview,
-  onOpenDone,
 }: BoardProps) {
   const [activeState, setActiveState] = useState<State>('ready')
 
@@ -72,9 +68,6 @@ export function Board({
             <span className="dato">{byState.review.length}</span> to review
           </button>
         </div>
-        <button type="button" className="chip-done" onClick={onOpenDone}>
-          <span className="dato">{doneCount}</span> done →
-        </button>
       </div>
 
       <nav className="selector-estados" aria-label="State to show">
