@@ -102,10 +102,6 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
     setOpenKey(null)
   }, [])
 
-  const openDone = useCallback(() => {
-    location.hash = '#done'
-  }, [])
-
   const reviewSnapshot = useCallback(
     () =>
       board.tasks
@@ -499,11 +495,9 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
               now={now}
               openKey={openKey}
               filtered={filtered}
-              doneCount={board.board.counts.done}
               onOpen={openCard}
               onClearFilters={clearFilters}
               onStartReview={startReview}
-              onOpenDone={openDone}
             />
           ) : (
             <p
