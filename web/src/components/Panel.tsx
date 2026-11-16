@@ -2,15 +2,17 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import { normalize } from '../filters'
-import { capabilitiesFor, type Capabilities } from '../permissions'
+import { capabilitiesFor, canVisit, type Capabilities } from '../permissions'
 import type { CreateTaskInput, Me, State, Task, View } from '../types'
 import { STATE_LABELS } from '../types'
 import { PAGE_SIZE, useBacklog } from '../useBacklog'
 import { useBoard } from '../useBoard'
+import { DONE_PAGE_SIZE, useDone } from '../useDone'
 import { useProjects } from '../useProjects'
 import { Backlog } from './Backlog'
 import { Board } from './Board'
 import { CreateTask } from './CreateTask'
+import { Done } from './Done'
 import { TaskDetail, type ReviewQueue } from './TaskDetail'
 import { ViewTabs } from './Views'
 
@@ -19,19 +21,17 @@ type Route = { view: View; key: string | null; reviewing: boolean }
 function parseHash(): Route {
   const [rawView, rawKey] = location.hash.replace(/^#/, '').split('/')
   const reviewing = rawView === 'review'
-  const view: View = rawView === 'backlog' ? 'backlog' : 'board'
+  const view: View = rawView === 'backlog' ? 'backlog' : rawView === 'done' ? 'done' : 'board'
   const key = rawKey?.trim() ? decodeURIComponent(rawKey.trim()) : null
   return { view, key, reviewing }
 }
 
 function initialRoute(caps: Capabilities): Route {
   const parsed = parseHash()
-  if (caps.canWrite) return parsed
+  if (canVisit(caps, parsed.view) && (caps.canWrite || !parsed.reviewing)) return parsed
 
-  if (parsed.view === 'backlog' || parsed.reviewing) {
-    const target = parsed.key ? `#board/${encodeURIComponent(parsed.key)}` : '#board'
-    history.replaceState(null, '', target)
-  }
+  const target = parsed.key ? `#board/${encodeURIComponent(parsed.key)}` : '#board'
+  history.replaceState(null, '', target)
   return { view: 'board', key: parsed.key, reviewing: false }
 }
 
@@ -55,15 +55,16 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
   const [reservedHeight, setReservedHeight] = useState<number | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
-  const scrollRef = useRef<Record<View, number>>({ board: 0, backlog: 0 })
+  const scrollRef = useRef<Record<View, number>>({ board: 0, backlog: 0, done: 0 })
   const lastOpenKey = useRef<string | null>(null)
 
   const board = useBoard(view === 'board')
   const backlog = useBacklog({ active: view === 'backlog', createdTask, onSessionExpired })
+  const done = useDone({ active: view === 'done', onSessionExpired })
 
   const navigate = useCallback(
     (next: View) => {
-      const target: View = caps.canWrite ? next : 'board'
+      const target: View = canVisit(caps, next) ? next : 'board'
       if (viewRef.current === target) return
       const height = contentRef.current?.offsetHeight ?? null
       scrollRef.current[viewRef.current] = window.scrollY
@@ -99,6 +100,10 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
     }
     history.replaceState(null, '', `#${viewRef.current}`)
     setOpenKey(null)
+  }, [])
+
+  const openDone = useCallback(() => {
+    location.hash = '#done'
   }, [])
 
   const reviewSnapshot = useCallback(
@@ -151,7 +156,7 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
   useEffect(() => {
     const onHashChange = () => {
       let next = parseHash()
-      if (!caps.canWrite && (next.view === 'backlog' || next.reviewing)) {
+      if (!canVisit(caps, next.view) || (!caps.canWrite && next.reviewing)) {
         const target = next.key ? `#board/${encodeURIComponent(next.key)}` : '#board'
         history.replaceState(null, '', target)
         next = { view: 'board', key: next.key, reviewing: false }
@@ -203,7 +208,8 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
     if (board.error?.status === 401) onSessionExpired()
   }, [board.error, onSessionExpired])
 
-  const activeHasData = view === 'board' ? board.board !== null : backlog.hasLoaded
+  const activeHasData =
+    view === 'board' ? board.board !== null : view === 'backlog' ? backlog.hasLoaded : done.hasLoaded
 
   useEffect(() => {
     if (reservedHeight === null || !activeHasData) return
@@ -233,6 +239,7 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
 
   const boardTasks = useMemo(() => board.tasks.filter(matches), [board.tasks, matches])
   const backlogRows = useMemo(() => backlog.rows.filter(matches), [backlog.rows, matches])
+  const doneRows = useMemo(() => done.rows.filter(matches), [done.rows, matches])
 
   const backlogCountLabel = backlog.hasLoaded
     ? backlog.nextCursor
@@ -240,12 +247,20 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
       : String(backlog.rows.length)
     : '—'
 
+  const doneCountLabel = done.hasLoaded
+    ? done.nextCursor
+      ? `${DONE_PAGE_SIZE}+`
+      : String(done.rows.length)
+    : '—'
+
   const titleCount =
     view === 'board'
       ? board.board
         ? String(boardTasks.length)
         : '—'
-      : backlogCountLabel
+      : view === 'done'
+        ? doneCountLabel
+        : backlogCountLabel
 
   const tabCount =
     view === 'board'
@@ -260,17 +275,32 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
 
   const tabHasMore = view === 'backlog' && backlog.hasLoaded && Boolean(backlog.nextCursor)
 
+  const doneTabCount =
+    view === 'done' && done.hasLoaded
+      ? done.rows.length
+      : board.board
+        ? board.board.counts.done
+        : done.hasLoaded
+          ? done.rows.length
+          : null
+
+  const doneTabHasMore = view === 'done' && done.hasLoaded && Boolean(done.nextCursor)
+
   const summary =
     view === 'board'
       ? filtered
         ? `${boardTasks.length} of ${board.tasks.length} tasks`
         : 'Every move leaves a trace.'
-      : filtered
-        ? `${backlogRows.length} of ${backlogCountLabel} tasks`
-        : 'The queue. Promote what comes next.'
+      : view === 'done'
+        ? filtered
+          ? `${doneRows.length} of ${doneCountLabel} tasks`
+          : 'What is closed, week by week.'
+        : filtered
+          ? `${backlogRows.length} of ${backlogCountLabel} tasks`
+          : 'The queue. Promote what comes next.'
 
-  const activeError = view === 'board' ? board.error : backlog.error
-  const activeReload = view === 'board' ? board.reload : backlog.reload
+  const activeError = view === 'board' ? board.error : view === 'done' ? done.error : backlog.error
+  const activeReload = view === 'board' ? board.reload : view === 'done' ? done.reload : backlog.reload
   const { projects, reload: reloadProjects } = useProjects(true)
 
   const clearFilters = useCallback(() => {
@@ -307,6 +337,10 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
         await api.patchTask(task.key, { state: destination, reason: reason || undefined }, task.version)
         setNotice(`${task.key} moved to ${STATE_LABELS[destination]}. The movement was recorded.`)
         await backlog.reload()
+      } else if (viewRef.current === 'done') {
+        await api.patchTask(task.key, { state: destination, reason: reason || undefined }, task.version)
+        setNotice(`${task.key} moved to ${STATE_LABELS[destination]}. The movement was recorded.`)
+        await done.reload()
       } else {
         await board.mutate(() =>
           api.patchTask(task.key, { state: destination, reason: reason || undefined }, task.version),
@@ -353,8 +387,16 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
       </a>
 
       <div className="titulo-tablero">
-        <h1>{view === 'board' ? 'Board' : 'Backlog'}</h1>
-        <ViewTabs me={me} caps={caps} activeView={view} backlogCount={tabCount} hasMore={tabHasMore} />
+        <h1>{view === 'board' ? 'Board' : view === 'backlog' ? 'Backlog' : 'Done'}</h1>
+        <ViewTabs
+          me={me}
+          caps={caps}
+          activeView={view}
+          backlogCount={tabCount}
+          hasMore={tabHasMore}
+          doneCount={doneTabCount}
+          doneHasMore={doneTabHasMore}
+        />
         <span className="total dato">
           {titleCount} {titleCount === '1' ? 'task' : 'tasks'}
         </span>
@@ -457,9 +499,11 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
               now={now}
               openKey={openKey}
               filtered={filtered}
+              doneCount={board.board.counts.done}
               onOpen={openCard}
               onClearFilters={clearFilters}
               onStartReview={startReview}
+              onOpenDone={openDone}
             />
           ) : (
             <p
@@ -493,6 +537,26 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
               style={reservedHeight !== null ? { minHeight: reservedHeight } : undefined}
             >
               {backlog.loading ? 'Loading backlog…' : null}
+            </p>
+          )}
+        </div>
+
+        <div className="vista" hidden={view !== 'done'}>
+          {done.hasLoaded ? (
+            <Done
+              rows={doneRows}
+              loadedCount={done.rows.length}
+              hasMore={Boolean(done.nextCursor)}
+              onOpen={openCard}
+              onClearFilters={clearFilters}
+            />
+          ) : (
+            <p
+              className="panel-cargando"
+              role={done.loading ? 'status' : undefined}
+              style={reservedHeight !== null ? { minHeight: reservedHeight } : undefined}
+            >
+              {done.loading ? 'Loading done…' : null}
             </p>
           )}
         </div>

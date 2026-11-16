@@ -1,4 +1,4 @@
-import { isViewer, type Me, type State, type Task, type TaskDetail } from './types'
+import { isViewer, type Me, type State, type Task, type TaskDetail, type View } from './types'
 
 export type Capabilities = {
   canWrite: boolean
@@ -57,6 +57,11 @@ export function capabilitiesFor(me: Me): Capabilities {
   if (isViewer(me)) return VISITOR_CAPABILITIES
   if (me.kind === 'agent') return AGENT_CAPABILITIES
   return HUMAN_CAPABILITIES
+}
+
+export function canVisit(caps: Capabilities, view: View): boolean {
+  if (view === 'backlog') return caps.canSeeBacklog
+  return true
 }
 
 export function destinationsFor(me: Me, task: Task, detail: TaskDetail | undefined): State[] {
