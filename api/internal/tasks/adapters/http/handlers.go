@@ -169,6 +169,9 @@ func (h *Handler) List(w nethttp.ResponseWriter, r *nethttp.Request) {
 	for _, task := range tasks {
 		items = append(items, taskOf(task))
 	}
+	if isViewer(principal) {
+		items = redactedTasks(items)
+	}
 	httpserver.WriteJSON(w, nethttp.StatusOK, struct {
 		Tasks      []taskJSON `json:"tasks"`
 		NextCursor string     `json:"next_cursor"`
@@ -189,6 +192,7 @@ func (h *Handler) Board(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 	columns := make(map[string][]taskJSON, len(board.Columns))
 	counts := make(map[string]int, len(board.Counts))
+	viewer := isViewer(principal)
 	for _, state := range []domain.State{
 		domain.Backlog, domain.Ready, domain.InProgress,
 		domain.Blocked, domain.Review, domain.Done,
@@ -197,6 +201,9 @@ func (h *Handler) Board(w nethttp.ResponseWriter, r *nethttp.Request) {
 		items := make([]taskJSON, 0, len(tasks))
 		for _, task := range tasks {
 			items = append(items, taskOf(task))
+		}
+		if viewer {
+			items = redactedTasks(items)
 		}
 		columns[string(state)] = items
 		counts[string(state)] = board.Counts[state]
@@ -276,13 +283,17 @@ func (h *Handler) Detail(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	httpserver.WriteJSON(w, nethttp.StatusOK, detailJSON{
+	body := detailJSON{
 		Task:       taskOf(detail.Task),
 		Movements:  movementsOf(detail.Movements),
 		Leases:     leasesOf(detail.Leases),
 		Deliveries: deliveriesOf(detail.Deliveries),
 		Comments:   commentsOf(detail.Comments),
-	})
+	}
+	if isViewer(principal) {
+		body = redactedDetail(body)
+	}
+	httpserver.WriteJSON(w, nethttp.StatusOK, body)
 }
 
 func (h *Handler) Movements(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -296,7 +307,11 @@ func (h *Handler) Movements(w nethttp.ResponseWriter, r *nethttp.Request) {
 		httpserver.WriteRuleError(w, err)
 		return
 	}
-	httpserver.WriteJSON(w, nethttp.StatusOK, movementsOf(movements))
+	items := movementsOf(movements)
+	if isViewer(principal) {
+		items = redactedMovements(items)
+	}
+	httpserver.WriteJSON(w, nethttp.StatusOK, items)
 }
 
 func (h *Handler) ListLeases(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -393,7 +408,11 @@ func (h *Handler) ListDeliveries(w nethttp.ResponseWriter, r *nethttp.Request) {
 		httpserver.WriteRuleError(w, err)
 		return
 	}
-	httpserver.WriteJSON(w, nethttp.StatusOK, deliveriesOf(deliveries))
+	items := deliveriesOf(deliveries)
+	if isViewer(principal) {
+		items = redactedDeliveries(items)
+	}
+	httpserver.WriteJSON(w, nethttp.StatusOK, items)
 }
 
 func (h *Handler) CreateDelivery(w nethttp.ResponseWriter, r *nethttp.Request) {
@@ -434,7 +453,11 @@ func (h *Handler) ListComments(w nethttp.ResponseWriter, r *nethttp.Request) {
 		httpserver.WriteRuleError(w, err)
 		return
 	}
-	httpserver.WriteJSON(w, nethttp.StatusOK, commentsOf(comments))
+	items := commentsOf(comments)
+	if isViewer(principal) {
+		items = redactedComments(items)
+	}
+	httpserver.WriteJSON(w, nethttp.StatusOK, items)
 }
 
 func (h *Handler) CreateComment(w nethttp.ResponseWriter, r *nethttp.Request) {

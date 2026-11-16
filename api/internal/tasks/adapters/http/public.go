@@ -19,7 +19,7 @@ func (h *Handler) PublicBoard(w nethttp.ResponseWriter, r *nethttp.Request) {
 		items = append(items, publicProjectJSON{
 			Key:         project.Key,
 			Name:        project.Name,
-			Description: project.Description,
+			Description: redactedOptional(project.Description),
 			Order:       project.SortOrder,
 			State:       project.State,
 			RepoURL:     project.RepoURL,
