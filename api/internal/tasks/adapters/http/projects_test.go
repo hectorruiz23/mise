@@ -26,7 +26,7 @@ func withAgentBearer(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+projectsAgentToken)
 }
 
-func createAgent(t *testing.T, env *tasksEnv) {
+func createAgent(t *testing.T, env *tasksEnv) usersdomain.User {
 	t.Helper()
 
 	repo := userssqlite.New(env.db)
@@ -35,10 +35,12 @@ func createAgent(t *testing.T, env *tasksEnv) {
 	if err != nil {
 		t.Fatalf("new agent: %v", err)
 	}
-	if _, err := repo.CreateUser(context.Background(), user,
-		credential.Hash(projectsAgentToken)); err != nil {
+	saved, err := repo.CreateUser(context.Background(), user,
+		credential.Hash(projectsAgentToken))
+	if err != nil {
 		t.Fatalf("create agent: %v", err)
 	}
+	return saved
 }
 
 func TestCreateProject(t *testing.T) {
@@ -116,17 +118,37 @@ func TestCreateProjectInvalidKeys(t *testing.T) {
 	}
 }
 
-func TestCreateProjectForbiddenForAgent(t *testing.T) {
+func TestCreateProjectByAgent(t *testing.T) {
 	env := newTasksEnv(t)
 	createAgent(t, env)
 
 	resp := env.request(t, http.MethodPost, "/api/projects",
 		`{"key":"AG","name":"Agent"}`, withAgentBearer)
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("agent status = %d, want 403", resp.StatusCode)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("agent status = %d, want 201", resp.StatusCode)
 	}
-	body := decode[apiErrorBody](t, resp)
-	if body.Error != "forbidden" {
-		t.Fatalf("agent error = %q, want forbidden", body.Error)
+	created := decode[projectBody](t, resp)
+	if created.Key != "AG" || created.Name != "Agent" {
+		t.Fatalf("created project = %+v, want AG/Agent", created)
+	}
+
+	list := env.request(t, http.MethodGet, "/api/projects", "", withBearer)
+	defer list.Body.Close()
+	if list.StatusCode != http.StatusOK {
+		t.Fatalf("list projects status = %d, want 200", list.StatusCode)
+	}
+
+	again := env.request(t, http.MethodPost, "/api/projects",
+		`{"key":"AG","name":"Agent again"}`, withAgentBearer)
+	defer again.Body.Close()
+	if again.StatusCode != http.StatusConflict {
+		t.Fatalf("duplicate status = %d, want 409", again.StatusCode)
+	}
+
+	blank := env.request(t, http.MethodPost, "/api/projects",
+		`{"key":"","name":""}`, withAgentBearer)
+	defer blank.Body.Close()
+	if blank.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid key status = %d, want 400", blank.StatusCode)
 	}
 }

@@ -37,6 +37,11 @@ type fakeRepo struct {
 	createReplayed bool
 	createErr      error
 
+	createProjectArgs struct {
+		called bool
+		params app.CreateProjectParams
+	}
+
 	listArgs  app.Filter
 	listTasks []domain.Task
 	listNext  string
@@ -116,7 +121,9 @@ func (r *fakeRepo) ListPublicProjects(_ context.Context) ([]app.Project, error) 
 	return nil, nil
 }
 
-func (r *fakeRepo) CreateProject(_ context.Context, _ app.Project, _ int64) error {
+func (r *fakeRepo) CreateProject(_ context.Context, p app.Project, _ int64) error {
+	r.createProjectArgs.called = true
+	r.createProjectArgs.params = app.CreateProjectParams{Key: p.Key, Name: p.Name}
 	return nil
 }
 
@@ -237,21 +244,48 @@ func ruleCode(t *testing.T, err error) string {
 	return rule.Code
 }
 
-func TestCreateRejectsAgents(t *testing.T) {
+func TestCreateLetsAnAgentFileACardInBacklog(t *testing.T) {
+	repo := &fakeRepo{createResult: domain.Task{
+		Key: "MI-1", ProjectKey: "MI", Title: "Agent card", State: domain.Backlog, CreatedBy: 2,
+	}}
+	service := app.New(repo, fakeClock(100))
+
+	created, _, err := service.Create(context.Background(), app.CreateParams{
+		ProjectKey: "MI",
+		Title:      "Agent card",
+		Actor:      agent(),
+	})
+	if err != nil {
+		t.Fatalf("create by agent: %v", err)
+	}
+	if !repo.createArgs.called {
+		t.Fatal("repository was not called for an agent")
+	}
+	if repo.createArgs.params.Actor.Kind != domain.Agent {
+		t.Fatalf("actor kind = %q, want %q", repo.createArgs.params.Actor.Kind, domain.Agent)
+	}
+	if created.State != domain.Backlog {
+		t.Fatalf("state = %q, want %q", created.State, domain.Backlog)
+	}
+}
+
+func TestCreateProjectLetsAnAgentRegisterAProject(t *testing.T) {
 	repo := &fakeRepo{}
 	service := app.New(repo, fakeClock(100))
 
-	_, _, err := service.Create(context.Background(), app.CreateParams{
-		ProjectKey: "MI",
-		Title:      "Agent task",
-		Actor:      agent(),
+	project, err := service.CreateProject(context.Background(), app.CreateProjectParams{
+		Key:   "XP",
+		Name:  "Cross",
+		Actor: agent(),
 	})
-
-	if code := ruleCode(t, err); code != domain.CodeForbidden {
-		t.Fatalf("code = %q, want %q", code, domain.CodeForbidden)
+	if err != nil {
+		t.Fatalf("create project by agent: %v", err)
 	}
-	if repo.createArgs.called {
-		t.Fatal("repository was called for an agent")
+	if project.Key != "XP" || project.Name != "Cross" {
+		t.Fatalf("project = %+v, want XP/Cross", project)
+	}
+	if !repo.createProjectArgs.called {
+		t.Fatal("repository was not called for an agent")
 	}
 }
 

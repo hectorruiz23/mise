@@ -148,7 +148,7 @@ export function Backlog({
   }
 
   async function moveToReady(task: Task) {
-    if (!caps.canWrite) return
+    if (!caps.canPromoteFromBacklog) return
     setMovingKey(task.key)
     setActionError('')
     onNoticeChange('')
@@ -186,7 +186,7 @@ export function Backlog({
 
   async function createProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!caps.canWrite) return
+    if (!caps.canCreate) return
     setCreatingProject(true)
     setProjectError('')
 
@@ -232,7 +232,7 @@ export function Backlog({
             <option value="oldest">Oldest</option>
           </select>
         </div>
-        {caps.canWrite && (
+        {caps.canCreate && (
           <button
             type="button"
             className="secundario"
@@ -411,7 +411,7 @@ export function Backlog({
                         <time dateTime={isoDate(task.created_at)}>{formatShortDate(task.created_at)}</time>
                       </td>
                       <td className="celda-accion">
-                        {caps.canWrite && (
+                        {caps.canPromoteFromBacklog && (
                           <button
                             type="button"
                             className="accion-fila"

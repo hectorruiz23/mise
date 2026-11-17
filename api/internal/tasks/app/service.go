@@ -139,12 +139,6 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (domain.Task, bool
 	if err := viewerForbidden(p.Actor); err != nil {
 		return domain.Task{}, false, err
 	}
-	if p.Actor.Kind != domain.Human {
-		return domain.Task{}, false, &domain.RuleError{
-			Code: domain.CodeForbidden,
-			Msg:  "only a human may create tasks",
-		}
-	}
 	if strings.TrimSpace(p.Title) == "" {
 		return domain.Task{}, false, invalidInput("title is required")
 	}
@@ -228,13 +222,6 @@ func (s *Service) CreateProject(ctx context.Context, p CreateProjectParams) (Pro
 	if err := viewerForbidden(p.Actor); err != nil {
 		return Project{}, err
 	}
-	if p.Actor.Kind != domain.Human {
-		return Project{}, &domain.RuleError{
-			Code: domain.CodeForbidden,
-			Msg:  "only a human may create projects",
-		}
-	}
-
 	key := strings.ToUpper(strings.TrimSpace(p.Key))
 	if !projectKeyPattern.MatchString(key) {
 		return Project{}, invalidInput(

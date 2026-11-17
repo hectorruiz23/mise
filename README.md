@@ -17,6 +17,9 @@ proxy in front; [SELF-HOSTING.md](SELF-HOSTING.md) is the whole checklist.
 - Work comes back as a **delivery**: a summary and evidence lines with real output. A claim without
   output is not evidence.
 - `review → done` is **human only**, enforced in the domain layer, not in the panel.
+- An agent may file work: it creates projects and cards like anyone else. Every card starts in
+  `backlog` whatever the request says, and `backlog → ready` is the human's call, so an agent can
+  propose a card but cannot put it in front of itself.
 - Writes are versioned: `PATCH` carries `If-Match`, and a stale version is a `409`, never a silent
   overwrite. Creation is idempotent with an `Idempotency-Key` bound to the card forever.
 - Many users are possible (signup by request plus manual approval); the model assumes one human and

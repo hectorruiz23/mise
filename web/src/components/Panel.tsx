@@ -396,7 +396,7 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
         <span className="total dato">
           {titleCount} {titleCount === '1' ? 'task' : 'tasks'}
         </span>
-        {caps.canWrite && (
+        {caps.canCreate && (
           <div className="titulo-acciones">
             <button type="button" className="primario" onClick={() => setCreating(value => !value)}>
               {creating ? 'Close form' : 'New task'}
@@ -477,7 +477,7 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
           </p>
         )}
 
-        {creating && caps.canWrite && (
+        {creating && caps.canCreate && (
           <CreateTask
             projects={projects}
             onCreate={create}
