@@ -3,6 +3,7 @@ import { isViewer, type Me, type State, type Task, type TaskDetail, type View } 
 export type Capabilities = {
   canWrite: boolean
   canCreate: boolean
+  canPromoteFromBacklog: boolean
   canMove: boolean
   canComment: boolean
   canDeliver: boolean
@@ -14,6 +15,7 @@ export type Capabilities = {
 const VISITOR_CAPABILITIES: Capabilities = {
   canWrite: false,
   canCreate: false,
+  canPromoteFromBacklog: false,
   canMove: false,
   canComment: false,
   canDeliver: false,
@@ -25,6 +27,7 @@ const VISITOR_CAPABILITIES: Capabilities = {
 const HUMAN_CAPABILITIES: Capabilities = {
   canWrite: true,
   canCreate: true,
+  canPromoteFromBacklog: true,
   canMove: true,
   canComment: true,
   canDeliver: true,
@@ -35,7 +38,8 @@ const HUMAN_CAPABILITIES: Capabilities = {
 
 const AGENT_CAPABILITIES: Capabilities = {
   canWrite: true,
-  canCreate: false,
+  canCreate: true,
+  canPromoteFromBacklog: false,
   canMove: true,
   canComment: true,
   canDeliver: true,
@@ -53,6 +57,15 @@ const HUMAN_MOVES: Record<State, State[]> = {
   done: ['ready'],
 }
 
+const AGENT_MOVES: Record<State, State[]> = {
+  backlog: [],
+  ready: ['in_progress'],
+  in_progress: ['blocked', 'review'],
+  blocked: ['in_progress'],
+  review: ['in_progress'],
+  done: [],
+}
+
 export function capabilitiesFor(me: Me): Capabilities {
   if (isViewer(me)) return VISITOR_CAPABILITIES
   if (me.kind === 'agent') return AGENT_CAPABILITIES
@@ -67,7 +80,7 @@ export function canVisit(caps: Capabilities, view: View): boolean {
 export function destinationsFor(me: Me, task: Task, detail: TaskDetail | undefined): State[] {
   if (!capabilitiesFor(me).canWrite) return []
 
-  const moves = HUMAN_MOVES[task.state] ?? []
+  const moves = (me.kind === 'agent' ? AGENT_MOVES : HUMAN_MOVES)[task.state] ?? []
   if (task.state === 'in_progress' && detail && detail.deliveries.length === 0) {
     return moves.filter(state => state !== 'review')
   }

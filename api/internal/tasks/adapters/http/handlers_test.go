@@ -152,12 +152,73 @@ type taskBody struct {
 	State      string  `json:"state"`
 	Version    int64   `json:"version"`
 	Acceptance *string `json:"acceptance"`
+	CreatedBy  int64   `json:"created_by"`
 }
 
 func createTask(t *testing.T, env *tasksEnv, key, body string) taskBody {
 	t.Helper()
 	resp := env.request(t, http.MethodPost, "/api/tasks", body, func(req *http.Request) {
 		withBearer(req)
+		req.Header.Set("Idempotency-Key", key)
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201", resp.StatusCode)
+	}
+	return decode[taskBody](t, resp)
+}
+
+func TestCreateByAgentLandsInBacklogAndCannotPromote(t *testing.T) {
+	env := newTasksEnv(t)
+	worker := createAgent(t, env)
+
+	created := createTaskAs(t, env, "agent-create-1",
+		`{"title":"Filed by an agent","project":"MI","notes":"proposal","acceptance":"the owner promotes or drops it"}`,
+		withAgentBearer)
+	if created.State != "backlog" {
+		t.Fatalf("state = %q, want backlog", created.State)
+	}
+	if created.CreatedBy != worker.ID {
+		t.Fatalf("created_by = %d, want the agent id %d", created.CreatedBy, worker.ID)
+	}
+	if created.Version != 1 {
+		t.Fatalf("version = %d, want 1", created.Version)
+	}
+
+	detail := env.request(t, http.MethodGet, "/api/tasks/"+created.Key, "", withBearer)
+	movements := decode[detailBody](t, detail).Movements
+	if len(movements) != 1 || movements[0].ToState != "backlog" || movements[0].ActorID != worker.ID {
+		t.Fatalf("movements = %+v, want a single backlog movement by the agent", movements)
+	}
+
+	resp := env.request(t, http.MethodPatch, "/api/tasks/"+created.Key, `{"state":"ready"}`,
+		func(req *http.Request) {
+			withAgentBearer(req)
+			req.Header.Set("If-Match", `"1"`)
+		})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("promote status = %d, want 409", resp.StatusCode)
+	}
+	body := decode[apiErrorBody](t, resp)
+	if body.Error != "lease_required" {
+		t.Fatalf("promote error = %q, want lease_required", body.Error)
+	}
+
+	gate := env.request(t, http.MethodPost, "/api/tasks",
+		`{"title":"Straight to ready","project":"MI","state":"ready"}`, func(req *http.Request) {
+			withAgentBearer(req)
+			req.Header.Set("Idempotency-Key", "agent-create-ready")
+		})
+	defer gate.Body.Close()
+	if gate.StatusCode != http.StatusBadRequest {
+		t.Fatalf("state in body status = %d, want 400", gate.StatusCode)
+	}
+}
+
+func createTaskAs(t *testing.T, env *tasksEnv, key, body string, auth func(*http.Request)) taskBody {
+	t.Helper()
+	resp := env.request(t, http.MethodPost, "/api/tasks", body, func(req *http.Request) {
+		auth(req)
 		req.Header.Set("Idempotency-Key", key)
 	})
 	if resp.StatusCode != http.StatusCreated {

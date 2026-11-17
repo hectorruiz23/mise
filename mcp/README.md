@@ -35,8 +35,8 @@ The token is read from the environment, then from disk:
 `MISE_TOKEN` → `~/.config/mise/agent-token` → `~/.config/mise/token`.
 URL: `MISE_URL`, then `~/.config/mise/url`, then `http://127.0.0.1:8787`.
 
-**Use the agent token.** A human token works (and is required for `create_task`), but then every
-movement in the history is signed by the human and the audit trail lies.
+**Use the agent token.** A human token works, but then every movement in the history is signed
+by the human and the audit trail lies.
 
 ### Hermes
 
@@ -115,7 +115,7 @@ file exists.
 | `board_overview` | Six columns with counts and cards | yes |
 | `list_tasks` | Filter by state and project, cursor pagination | yes |
 | `get_task` | Fields, movements, leases, deliveries, comments | yes |
-| `create_task` | Create a card in backlog (idempotent) | **no** — human only, 403 |
+| `create_task` | Create a card in backlog (idempotent) | yes — the card lands in backlog |
 | `move_task` | Change state or edit fields, sends `If-Match` for you | yes, except `review → done` |
 | `acquire_lease` | Take a card: 15 minutes, renewable | yes |
 | `renew_lease` | Extend your lease, does not touch the card version | yes |

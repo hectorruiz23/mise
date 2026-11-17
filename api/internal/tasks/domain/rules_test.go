@@ -128,6 +128,27 @@ func TestAllowedTransitionsReturnsACopy(t *testing.T) {
 	}
 }
 
+func TestAnAgentCannotPromoteABacklogCard(t *testing.T) {
+	task := baseTask(Backlog)
+
+	if got := AllowedTransitions(Backlog, Agent); len(got) != 0 {
+		t.Fatalf("agent transitions out of backlog = %v, want none", got)
+	}
+	_, _, err := ApplyMove(task, Ready, actorOf(Agent), "", false, 5000)
+	requireCode(t, err, CodeInvalidTransition)
+	if task.State != Backlog {
+		t.Fatalf("rejected promote mutated the receiver: %+v", task)
+	}
+
+	next, _, err := ApplyMove(task, Ready, actorOf(Human), "", false, 5000)
+	if err != nil {
+		t.Fatalf("human promote: %v", err)
+	}
+	if next.State != Ready {
+		t.Fatalf("State = %q, want %q", next.State, Ready)
+	}
+}
+
 func TestHumanGateOnReviewToDone(t *testing.T) {
 	now := int64(5000)
 	task := baseTask(Review)

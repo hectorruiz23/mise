@@ -153,9 +153,9 @@ def tool_specs() -> list[dict]:
           "Full detail of one card: fields, movements, leases, deliveries and comments.",
           {"key": {"type": "string", "description": "Card key, e.g. MI-12"}}, ["key"]),
         t("create_task",
-          "Create a card in backlog. Human credentials only: the API refuses card creation by "
-          "agents with 403, so an agent should propose the card instead. The idempotency key is "
-          "generated for you; retrying the same call does not duplicate the card.",
+          "Create a card. It always lands in backlog, whoever creates it: an agent may file "
+          "work, and only the human promotes a card to ready. The idempotency key is generated "
+          "for you; retrying the same call does not duplicate the card.",
           {"title": {"type": "string"},
            "project": {"type": "string", "description": "Project key, e.g. MI"},
            "notes": {"type": "string", "description": "Context, constraints, starting point"},
