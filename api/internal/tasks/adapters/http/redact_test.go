@@ -81,6 +81,45 @@ func TestRedactedTextLeavesEmptyAlone(t *testing.T) {
 	}
 }
 
+func TestRedactedDeliveryCoversEvidenceItems(t *testing.T) {
+	label := "el repo está en /home/hector/Projects/mise"
+	raw := "`cd ~/Projects/mise && go test ./...`"
+	delivery := redactedDelivery(deliveryJSON{
+		ID:       7,
+		TaskKey:  "MI-7",
+		Summary:  "hecho en /home/hector/tmp",
+		Evidence: []string{raw},
+		EvidenceItems: []evidenceItemJSON{
+			{Label: &label, Raw: raw},
+			{Label: nil, Raw: "salida limpia"},
+		},
+	})
+
+	if strings.Contains(delivery.Summary, "/home/hector") {
+		t.Fatalf("summary still carries a path: %q", delivery.Summary)
+	}
+	if delivery.EvidenceItems[0].Label == nil ||
+		strings.Contains(*delivery.EvidenceItems[0].Label, "/home/hector") {
+		t.Fatalf("label still carries a path: %v", delivery.EvidenceItems[0].Label)
+	}
+	if !strings.Contains(*delivery.EvidenceItems[0].Label, "<path>") {
+		t.Fatalf("label carries no redaction mark: %q", *delivery.EvidenceItems[0].Label)
+	}
+	if strings.Contains(delivery.EvidenceItems[0].Raw, "~/Projects") {
+		t.Fatalf("raw still carries a path: %q", delivery.EvidenceItems[0].Raw)
+	}
+	if delivery.Evidence[0] != delivery.EvidenceItems[0].Raw {
+		t.Fatalf("evidence and evidence_items diverged: %q vs %q",
+			delivery.Evidence[0], delivery.EvidenceItems[0].Raw)
+	}
+	if delivery.EvidenceItems[1].Label != nil || delivery.EvidenceItems[1].Raw != "salida limpia" {
+		t.Fatalf("clean entry changed: %+v", delivery.EvidenceItems[1])
+	}
+	if delivery.ID != 7 || delivery.TaskKey != "MI-7" {
+		t.Fatalf("redaction lost identity fields: %+v", delivery)
+	}
+}
+
 func TestRedactedDetailCoversEveryProse(t *testing.T) {
 	notes := "en `/home/hector/Projects/mise` está el repo"
 	acceptance := "corre `~/.local/bin/hermes` y comprueba"

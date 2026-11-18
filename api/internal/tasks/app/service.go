@@ -509,6 +509,31 @@ func (s *Service) Deliver(
 	evidence []string,
 	prURL *string,
 ) (domain.Task, domain.Delivery, error) {
+	return s.deliver(ctx, key, actor, leaseID, summary, evidence, nil, prURL)
+}
+
+func (s *Service) DeliverItems(
+	ctx context.Context,
+	key string,
+	actor domain.Actor,
+	leaseID *int64,
+	summary string,
+	items []domain.EvidenceItem,
+	prURL *string,
+) (domain.Task, domain.Delivery, error) {
+	return s.deliver(ctx, key, actor, leaseID, summary, nil, items, prURL)
+}
+
+func (s *Service) deliver(
+	ctx context.Context,
+	key string,
+	actor domain.Actor,
+	leaseID *int64,
+	summary string,
+	evidence []string,
+	items []domain.EvidenceItem,
+	prURL *string,
+) (domain.Task, domain.Delivery, error) {
 	if err := viewerForbidden(actor); err != nil {
 		return domain.Task{}, domain.Delivery{}, err
 	}
@@ -529,7 +554,14 @@ func (s *Service) Deliver(
 		}
 	}
 
-	next, delivery, movement, err := domain.ApplyDelivery(task, lease, actor, summary, evidence, prURL, now)
+	var next domain.Task
+	var delivery domain.Delivery
+	var movement domain.Movement
+	if items != nil {
+		next, delivery, movement, err = domain.ApplyDeliveryItems(task, lease, actor, summary, items, prURL, now)
+	} else {
+		next, delivery, movement, err = domain.ApplyDelivery(task, lease, actor, summary, evidence, prURL, now)
+	}
 	if err != nil {
 		return domain.Task{}, domain.Delivery{}, err
 	}

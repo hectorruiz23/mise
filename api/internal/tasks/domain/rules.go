@@ -166,6 +166,34 @@ func Acquire(t Task, live *Lease, agent Actor, now int64, ttlSeconds int64) (Tas
 }
 
 func ValidateDelivery(t Task, lease *Lease, actor Actor, summary string, evidence []string) error {
+	if err := validateDeliveryHeader(t, lease, actor, summary); err != nil {
+		return err
+	}
+	if err := ValidateEvidence(evidence); err != nil {
+		return err
+	}
+	if t.State != InProgress {
+		return ruleError(CodeInvalidTransition, "a delivery is only possible from in_progress")
+	}
+
+	return nil
+}
+
+func ValidateDeliveryItems(t Task, lease *Lease, actor Actor, summary string, items []EvidenceItem) error {
+	if err := validateDeliveryHeader(t, lease, actor, summary); err != nil {
+		return err
+	}
+	if err := ValidateEvidenceItems(items); err != nil {
+		return err
+	}
+	if t.State != InProgress {
+		return ruleError(CodeInvalidTransition, "a delivery is only possible from in_progress")
+	}
+
+	return nil
+}
+
+func validateDeliveryHeader(t Task, lease *Lease, actor Actor, summary string) error {
 	if actor.Kind == Viewer {
 		return ruleError(CodeForbidden, "viewers cannot modify the board")
 	}
@@ -190,14 +218,6 @@ func ValidateDelivery(t Task, lease *Lease, actor Actor, summary string, evidenc
 		return invalidInput("unknown actor kind")
 	}
 
-	if err := ValidateEvidence(evidence); err != nil {
-		return err
-	}
-
-	if t.State != InProgress {
-		return ruleError(CodeInvalidTransition, "a delivery is only possible from in_progress")
-	}
-
 	return nil
 }
 
@@ -205,6 +225,21 @@ func ApplyDelivery(t Task, lease *Lease, actor Actor, summary string, evidence [
 	if err := ValidateDelivery(t, lease, actor, summary, evidence); err != nil {
 		return Task{}, Delivery{}, Movement{}, err
 	}
+	return buildDelivery(t, lease, actor, summary, evidence, nil, prURL, now)
+}
+
+func ApplyDeliveryItems(t Task, lease *Lease, actor Actor, summary string, items []EvidenceItem, prURL *string, now int64) (Task, Delivery, Movement, error) {
+	if err := ValidateDeliveryItems(t, lease, actor, summary, items); err != nil {
+		return Task{}, Delivery{}, Movement{}, err
+	}
+	evidence := make([]string, len(items))
+	for index, item := range items {
+		evidence[index] = item.Raw
+	}
+	return buildDelivery(t, lease, actor, summary, evidence, items, prURL, now)
+}
+
+func buildDelivery(t Task, lease *Lease, actor Actor, summary string, evidence []string, items []EvidenceItem, prURL *string, now int64) (Task, Delivery, Movement, error) {
 	normalizedPRURL, err := NormalizePRURL(prURL)
 	if err != nil {
 		return Task{}, Delivery{}, Movement{}, err
@@ -227,6 +262,9 @@ func ApplyDelivery(t Task, lease *Lease, actor Actor, summary string, evidence [
 		PRURL:     normalizedPRURL,
 		CreatedAt: now,
 		ActorID:   actor.ID,
+	}
+	if items != nil {
+		delivery.EvidenceItems = cloneEvidenceItems(items)
 	}
 	if lease != nil {
 		leaseID := lease.ID
@@ -256,6 +294,39 @@ func ValidateEvidence(evidence []string) error {
 		}
 	}
 	return nil
+}
+
+func ValidateEvidenceItems(items []EvidenceItem) error {
+	if len(items) < 1 || len(items) > 20 {
+		return invalidInput("evidence_items must contain between 1 and 20 entries")
+	}
+	for i, item := range items {
+		if strings.TrimSpace(item.Raw) == "" {
+			return invalidInput(fmt.Sprintf("evidence item %d has a blank raw value", i+1))
+		}
+		if utf8.RuneCountInString(item.Raw) > 4000 {
+			return invalidInput(fmt.Sprintf("evidence item %d raw exceeds 4000 characters", i+1))
+		}
+		if item.Label == nil || strings.TrimSpace(*item.Label) == "" {
+			return invalidInput(fmt.Sprintf("evidence item %d has a blank label", i+1))
+		}
+		if utf8.RuneCountInString(*item.Label) > 120 {
+			return invalidInput(fmt.Sprintf("evidence item %d label exceeds 120 characters", i+1))
+		}
+	}
+	return nil
+}
+
+func cloneEvidenceItems(items []EvidenceItem) []EvidenceItem {
+	cloned := make([]EvidenceItem, len(items))
+	for index, item := range items {
+		cloned[index] = EvidenceItem{Raw: item.Raw}
+		if item.Label != nil {
+			label := *item.Label
+			cloned[index].Label = &label
+		}
+	}
+	return cloned
 }
 
 func NormalizePRURL(raw *string) (*string, error) {

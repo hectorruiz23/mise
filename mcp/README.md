@@ -155,15 +155,17 @@ These bite anyone talking to the API directly:
 ## Verifying it
 
 ```sh
-python3 mcp/smoke.py     # leads with PASS/FAIL; read-only, so safe against the real board
+python3 mcp/smoke.py     # leads with PASS/FAIL; builds and drives its own throwaway local API, so it never touches the real board
 ```
 
-Thirteen checks: handshake, the agent contract travels with it, ten tools, no approve/delete tool,
-every schema declared, board with its six columns, a card resolves, an unknown card answers
-`not_found`.
+The smoke needs `go` on `PATH`, or `MISE_SMOKE_BINARY` pointing at an already compiled binary.
+It provisions a human and an agent on the local instance, walks a card from backlog to a real
+delivery with `evidence_items`, and checks both evidence representations in the delivery
+response, the task detail, the listing and the database, plus the tool schemas (ten tools,
+no approve/delete, `deliver` advertises both representations).
 
-The full write cycle — create, lease, deliver, agent refused on close, human closes — was run once
-by hand against the Pi and is not kept in the repo on purpose: it writes real cards.
+The full write cycle against the real Pi was run once by hand and is not kept in the repo on
+purpose: it writes real cards.
 
 Or by hand, one tool at a time:
 

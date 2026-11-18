@@ -124,16 +124,19 @@ class ApiError(Exception):
         return f"{text}: {self.detail}" if self.detail else text
 
 def tool_specs() -> list[dict]:
-    def t(name, desc, props, required=()):
+    def t(name, desc, props, required=(), extra=None):
+        schema = {
+            "type": "object",
+            "properties": props,
+            "required": list(required),
+            "additionalProperties": False,
+        }
+        if extra:
+            schema.update(extra)
         return {
             "name": name,
             "description": desc,
-            "inputSchema": {
-                "type": "object",
-                "properties": props,
-                "required": list(required),
-                "additionalProperties": False,
-            },
+            "inputSchema": schema,
         }
 
     return [
@@ -186,15 +189,24 @@ def tool_specs() -> list[dict]:
           {"key": {"type": "string"}, "lease_id": {"type": "integer"}}, ["key", "lease_id"]),
         t("deliver",
           "Deliver the work: a summary plus at least one verifiable piece of evidence. Moves the "
-          "card to review and closes your lease.",
+          "card to review and closes your lease. Pass exactly one of evidence (plain strings) or "
+          "evidence_items ({label, raw} objects).",
           {"key": {"type": "string"},
            "summary": {"type": "string", "description": "What you did, in plain language"},
            "evidence": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20,
                         "description": "Command and output, file path, URL, test result"},
+           "evidence_items": {"type": "array", "minItems": 1, "maxItems": 20,
+                              "items": {"type": "object",
+                                        "properties": {"label": {"type": "string", "minLength": 1, "maxLength": 120},
+                                                       "raw": {"type": "string", "minLength": 1, "maxLength": 4000}},
+                                        "required": ["label", "raw"],
+                                        "additionalProperties": False},
+                              "description": "Structured evidence with a short label and the raw proof"},
            "pr_url": {"type": "string", "maxLength": 500,
                       "description": "Optional absolute http(s) link to the pull request behind the work"},
            "lease_id": {"type": "integer", "description": "Omit to let the server use your live lease"}},
-          ["key", "summary", "evidence"]),
+          ["key", "summary"],
+          {"anyOf": [{"required": ["evidence"]}, {"required": ["evidence_items"]}]}),
         t("comment",
           "Add a comment to a card. The body is stored as written.",
           {"key": {"type": "string"}, "body": {"type": "string"}}, ["key", "body"]),
@@ -268,8 +280,16 @@ def run_tool(api: Api, name: str, args: dict) -> dict:
         lease_id = args.get("lease_id")
         if lease_id is None:
             lease_id = _lease_id(api, args["key"])
-        body = {"lease_id": int(lease_id), "summary": args["summary"],
-                "evidence": list(args["evidence"])}
+        body = {"lease_id": int(lease_id), "summary": args["summary"]}
+        has_evidence = "evidence" in args
+        has_items = "evidence_items" in args
+        if has_evidence == has_items:
+            raise ApiError("invalid_input", "pass exactly one of evidence or evidence_items")
+        if has_items:
+            body["evidence_items"] = [{"label": item["label"], "raw": item["raw"]}
+                                      for item in args["evidence_items"]]
+        else:
+            body["evidence"] = list(args["evidence"])
         if args.get("pr_url"):
             body["pr_url"] = args["pr_url"]
         return _envelope(api.call("POST", f"/api/tasks/{args['key']}/deliveries", body))
