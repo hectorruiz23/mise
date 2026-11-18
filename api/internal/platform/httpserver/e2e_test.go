@@ -106,6 +106,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
 	server.HandleReadFunc("GET /api/tasks/{key}/deliveries", tasksHandler.ListDeliveries)
 	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
+	server.HandleReadFunc("GET /api/tasks/{key}/anchors", tasksHandler.Anchors)
 	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
 	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)

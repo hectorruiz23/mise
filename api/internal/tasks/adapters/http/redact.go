@@ -3,6 +3,7 @@ package http
 import (
 	"regexp"
 
+	"mise/api/internal/githubinfo"
 	"mise/api/internal/platform/httpserver"
 	"mise/api/internal/tasks/domain"
 )
@@ -100,4 +101,59 @@ func redactedDetail(detail detailJSON) detailJSON {
 	detail.Deliveries = redactedDeliveries(detail.Deliveries)
 	detail.Comments = redactedComments(detail.Comments)
 	return detail
+}
+
+func redactedAnchors(body anchorsJSON) anchorsJSON {
+	body.TaskKey = redactedText(body.TaskKey)
+	body.Main = redactedStringEnvelope(body.Main)
+	switch pr := body.PR.(type) {
+	case linkPRJSON:
+		pr.URL = redactedText(pr.URL)
+		body.PR = pr
+	case githubPRJSON:
+		pr.URL = redactedText(pr.URL)
+		pr.State = redactedStateEnvelope(pr.State)
+		pr.MergeSHA = redactedStringEnvelope(pr.MergeSHA)
+		pr.Checks = redactedChecksEnvelope(pr.Checks)
+		body.PR = pr
+	}
+	return body
+}
+
+func redactedStateEnvelope(envelope githubinfo.Envelope[string]) githubinfo.Envelope[string] {
+	envelope.Data = redactedText(envelope.Data)
+	return envelope
+}
+
+func redactedStringEnvelope(envelope githubinfo.Envelope[*string]) githubinfo.Envelope[*string] {
+	if envelope.Data != nil {
+		value := redactedText(*envelope.Data)
+		envelope.Data = &value
+	}
+	return envelope
+}
+
+func redactedChecksEnvelope(envelope githubinfo.Envelope[*githubinfo.Checks]) githubinfo.Envelope[*githubinfo.Checks] {
+	if envelope.Data == nil {
+		return envelope
+	}
+	checks := *envelope.Data
+	checks.SHA = redactedText(checks.SHA)
+	checks.Context = redactedText(checks.Context)
+	checks.Jobs = make([]githubinfo.Job, len(envelope.Data.Jobs))
+	for index, job := range envelope.Data.Jobs {
+		job.Name = redactedText(job.Name)
+		job.Status = redactedText(job.Status)
+		if job.Conclusion != nil {
+			value := redactedText(*job.Conclusion)
+			job.Conclusion = &value
+		}
+		if job.URL != nil {
+			value := redactedText(*job.URL)
+			job.URL = &value
+		}
+		checks.Jobs[index] = job
+	}
+	envelope.Data = &checks
+	return envelope
 }
