@@ -99,16 +99,65 @@ export type Lease = {
   closed_reason: string | null
 }
 
+export type EvidenceItem = {
+  label: string | null
+  raw: string
+}
+
 export type Delivery = {
   id: number
   task_key: string
   lease_id: number | null
   summary: string
   evidence: string[]
+  evidence_items?: EvidenceItem[]
   pr_url: string | null
   created_at: number
   actor_id: number
   actor: Actor
+}
+
+export type EnvelopeStatus = 'fresh' | 'stale' | 'unavailable' | 'unknown'
+
+export type Envelope<T> = {
+  status: EnvelopeStatus
+  data: T
+  checked_at: number | null
+  expires_at: number | null
+  reason: string | null
+  retry_at: number | null
+}
+
+export type PullRequestChecks = {
+  sha: string
+  context: 'pull_request' | 'push' | 'unknown'
+  run_id: number | null
+  attempt: number | null
+  jobs: { name: string; status: string; conclusion: string | null; url: string | null }[]
+  result: 'success' | 'failure' | 'pending' | 'unknown'
+}
+
+export type PullRequestAnchor =
+  | { kind: 'link'; url: string }
+  | {
+      kind: 'github'
+      url: string
+      state: Envelope<string>
+      merge_sha: Envelope<string | null>
+      checks: Envelope<PullRequestChecks | null>
+    }
+
+export type Anchors = {
+  task_key: string
+  delivery_id: number | null
+  pr: PullRequestAnchor | null
+  main: Envelope<string | null>
+}
+
+export type BuildInfo = {
+  repository: string | null
+  revision: string | null
+  tree_state: 'clean' | 'dirty' | 'unknown'
 }
 
 export type Comment = {
