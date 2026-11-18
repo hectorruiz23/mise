@@ -65,6 +65,14 @@ func redactedDelivery(item deliveryJSON) deliveryJSON {
 		evidence[index] = redactedText(line)
 	}
 	item.Evidence = evidence
+	items := make([]evidenceItemJSON, len(item.EvidenceItems))
+	for index, evidenceItem := range item.EvidenceItems {
+		items[index] = evidenceItemJSON{
+			Label: redactedOptional(evidenceItem.Label),
+			Raw:   redactedText(evidenceItem.Raw),
+		}
+	}
+	item.EvidenceItems = items
 	return item
 }
 

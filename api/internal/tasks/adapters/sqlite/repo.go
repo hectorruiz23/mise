@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -642,7 +643,7 @@ func (r *Repo) Deliver(ctx context.Context, t domain.Task, d domain.Delivery, m 
 			}
 		}
 
-		evidence, err := json.Marshal(d.Evidence)
+		evidence, err := encodeEvidence(d)
 		if err != nil {
 			return fmt.Errorf("deliver to %q: encode evidence: %w", t.Key, err)
 		}
@@ -1024,16 +1025,16 @@ func scanMovement(s scanner) (domain.Movement, error) {
 
 func scanDelivery(s scanner) (domain.Delivery, error) {
 	var (
-		delivery  domain.Delivery
-		leaseID   sql.NullInt64
-		evidence  string
-		prURL     sql.NullString
-		actorName string
-		actorKind string
+		delivery    domain.Delivery
+		leaseID     sql.NullInt64
+		evidenceRaw string
+		prURL       sql.NullString
+		actorName   string
+		actorKind   string
 	)
 	if err := s.Scan(
 		&delivery.ID, &delivery.TaskKey, &leaseID, &delivery.Summary,
-		&evidence, &prURL, &delivery.CreatedAt, &delivery.ActorID, &actorName, &actorKind,
+		&evidenceRaw, &prURL, &delivery.CreatedAt, &delivery.ActorID, &actorName, &actorKind,
 	); err != nil {
 		return domain.Delivery{}, err
 	}
@@ -1050,10 +1051,78 @@ func scanDelivery(s scanner) (domain.Delivery, error) {
 		value := prURL.String
 		delivery.PRURL = &value
 	}
-	if err := json.Unmarshal([]byte(evidence), &delivery.Evidence); err != nil {
+	evidence, items, err := decodeEvidence(evidenceRaw)
+	if err != nil {
 		return domain.Delivery{}, fmt.Errorf("decode delivery %d evidence: %w", delivery.ID, err)
 	}
+	delivery.Evidence = evidence
+	delivery.EvidenceItems = items
 	return delivery, nil
+}
+
+type storedEvidenceItem struct {
+	Label *string `json:"label"`
+	Raw   string  `json:"raw"`
+}
+
+func encodeEvidence(delivery domain.Delivery) ([]byte, error) {
+	if len(delivery.EvidenceItems) > 0 && evidenceItemsLabelled(delivery.EvidenceItems) {
+		items := make([]storedEvidenceItem, len(delivery.EvidenceItems))
+		for index, item := range delivery.EvidenceItems {
+			items[index] = storedEvidenceItem{Label: item.Label, Raw: item.Raw}
+		}
+		return json.Marshal(items)
+	}
+	return json.Marshal(delivery.Evidence)
+}
+
+func evidenceItemsLabelled(items []domain.EvidenceItem) bool {
+	for _, item := range items {
+		if item.Label == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func decodeEvidence(raw string) ([]string, []domain.EvidenceItem, error) {
+	trimmedRaw := bytes.TrimSpace([]byte(raw))
+	if bytes.Equal(trimmedRaw, []byte("null")) {
+		return nil, nil, errors.New("evidence is null")
+	}
+	var elements []json.RawMessage
+	if err := json.Unmarshal(trimmedRaw, &elements); err != nil {
+		return nil, nil, err
+	}
+	evidence := make([]string, 0, len(elements))
+	items := make([]domain.EvidenceItem, 0, len(elements))
+	for index, element := range elements {
+		trimmed := bytes.TrimSpace(element)
+		switch {
+		case len(trimmed) > 0 && trimmed[0] == '"':
+			var line string
+			if err := json.Unmarshal(trimmed, &line); err != nil {
+				return nil, nil, fmt.Errorf("element %d: %w", index, err)
+			}
+			evidence = append(evidence, line)
+			items = append(items, domain.EvidenceItem{Raw: line})
+		case len(trimmed) > 0 && trimmed[0] == '{':
+			var stored struct {
+				Label *string `json:"label"`
+				Raw   *string `json:"raw"`
+			}
+			decoder := json.NewDecoder(bytes.NewReader(trimmed))
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&stored); err != nil || stored.Raw == nil {
+				return nil, nil, fmt.Errorf("element %d is not a {label, raw} object", index)
+			}
+			evidence = append(evidence, *stored.Raw)
+			items = append(items, domain.EvidenceItem{Label: stored.Label, Raw: *stored.Raw})
+		default:
+			return nil, nil, fmt.Errorf("element %d is neither a string nor an object", index)
+		}
+	}
+	return evidence, items, nil
 }
 
 type idempotencyRecord struct {

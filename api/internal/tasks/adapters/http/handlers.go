@@ -437,8 +437,21 @@ func (h *Handler) CreateDelivery(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	task, delivery, err := h.service.Deliver(r.Context(), r.PathValue("key"),
-		actorOf(principal), body.LeaseID, body.Summary, body.Evidence, body.PRURL)
+	evidence, items, err := body.evidenceInput()
+	if err != nil {
+		httpserver.WriteError(w, nethttp.StatusBadRequest, kernel.CodeInvalidInput, err.Error())
+		return
+	}
+
+	var task domain.Task
+	var delivery domain.Delivery
+	if items != nil {
+		task, delivery, err = h.service.DeliverItems(r.Context(), r.PathValue("key"),
+			actorOf(principal), body.LeaseID, body.Summary, items, body.PRURL)
+	} else {
+		task, delivery, err = h.service.Deliver(r.Context(), r.PathValue("key"),
+			actorOf(principal), body.LeaseID, body.Summary, evidence, body.PRURL)
+	}
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -784,15 +797,16 @@ type leaseJSON struct {
 }
 
 type deliveryJSON struct {
-	ID        int64     `json:"id"`
-	TaskKey   string    `json:"task_key"`
-	LeaseID   *int64    `json:"lease_id"`
-	Summary   string    `json:"summary"`
-	Evidence  []string  `json:"evidence"`
-	PRURL     *string   `json:"pr_url"`
-	CreatedAt int64     `json:"created_at"`
-	ActorID   int64     `json:"actor_id"`
-	Actor     actorJSON `json:"actor"`
+	ID            int64              `json:"id"`
+	TaskKey       string             `json:"task_key"`
+	LeaseID       *int64             `json:"lease_id"`
+	Summary       string             `json:"summary"`
+	Evidence      []string           `json:"evidence"`
+	EvidenceItems []evidenceItemJSON `json:"evidence_items"`
+	PRURL         *string            `json:"pr_url"`
+	CreatedAt     int64              `json:"created_at"`
+	ActorID       int64              `json:"actor_id"`
+	Actor         actorJSON          `json:"actor"`
 }
 
 type commentJSON struct {
@@ -811,10 +825,58 @@ type actorJSON struct {
 }
 
 type deliveryRequest struct {
-	LeaseID  *int64   `json:"lease_id"`
-	Summary  string   `json:"summary"`
-	Evidence []string `json:"evidence"`
-	PRURL    *string  `json:"pr_url"`
+	LeaseID       *int64          `json:"lease_id"`
+	Summary       string          `json:"summary"`
+	Evidence      json.RawMessage `json:"evidence"`
+	EvidenceItems json.RawMessage `json:"evidence_items"`
+	PRURL         *string         `json:"pr_url"`
+}
+
+func (b deliveryRequest) evidenceInput() ([]string, []domain.EvidenceItem, error) {
+	hasEvidence := len(b.Evidence) > 0
+	hasItems := len(b.EvidenceItems) > 0
+	if hasEvidence == hasItems {
+		return nil, nil, errors.New("exactly one of evidence or evidence_items is required")
+	}
+	if hasEvidence {
+		var evidence []string
+		if err := json.Unmarshal(b.Evidence, &evidence); err != nil {
+			return nil, nil, errors.New("evidence must be an array of strings")
+		}
+		return evidence, nil, nil
+	}
+
+	items, err := decodeEvidenceItems(b.EvidenceItems)
+	if err != nil {
+		return nil, nil, err
+	}
+	return nil, items, nil
+}
+
+func decodeEvidenceItems(raw json.RawMessage) ([]domain.EvidenceItem, error) {
+	var rawItems []json.RawMessage
+	if err := json.Unmarshal(raw, &rawItems); err != nil {
+		return nil, errors.New("evidence_items must be an array of {label, raw} objects")
+	}
+	items := make([]domain.EvidenceItem, 0, len(rawItems))
+	for _, rawItem := range rawItems {
+		var item struct {
+			Label *string `json:"label"`
+			Raw   *string `json:"raw"`
+		}
+		decoder := json.NewDecoder(bytes.NewReader(rawItem))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&item); err != nil || item.Label == nil || item.Raw == nil {
+			return nil, errors.New("evidence_items entries must be {label, raw} objects with string values")
+		}
+		items = append(items, domain.EvidenceItem{Label: item.Label, Raw: *item.Raw})
+	}
+	return items, nil
+}
+
+type evidenceItemJSON struct {
+	Label *string `json:"label"`
+	Raw   string  `json:"raw"`
 }
 
 type commentRequest struct {
@@ -874,16 +936,32 @@ func deliveriesOf(deliveries []domain.Delivery) []deliveryJSON {
 
 func deliveryOf(delivery domain.Delivery) deliveryJSON {
 	return deliveryJSON{
-		ID:        delivery.ID,
-		TaskKey:   delivery.TaskKey,
-		LeaseID:   delivery.LeaseID,
-		Summary:   delivery.Summary,
-		Evidence:  delivery.Evidence,
-		PRURL:     delivery.PRURL,
-		CreatedAt: delivery.CreatedAt,
-		ActorID:   delivery.ActorID,
-		Actor:     actorOfDomain(delivery.Actor),
+		ID:            delivery.ID,
+		TaskKey:       delivery.TaskKey,
+		LeaseID:       delivery.LeaseID,
+		Summary:       delivery.Summary,
+		Evidence:      delivery.Evidence,
+		EvidenceItems: evidenceItemsOf(delivery),
+		PRURL:         delivery.PRURL,
+		CreatedAt:     delivery.CreatedAt,
+		ActorID:       delivery.ActorID,
+		Actor:         actorOfDomain(delivery.Actor),
 	}
+}
+
+func evidenceItemsOf(delivery domain.Delivery) []evidenceItemJSON {
+	source := delivery.EvidenceItems
+	if len(source) == 0 {
+		source = make([]domain.EvidenceItem, len(delivery.Evidence))
+		for index, line := range delivery.Evidence {
+			source[index] = domain.EvidenceItem{Raw: line}
+		}
+	}
+	items := make([]evidenceItemJSON, len(source))
+	for index, item := range source {
+		items[index] = evidenceItemJSON{Label: item.Label, Raw: item.Raw}
+	}
+	return items
 }
 
 func commentsOf(comments []domain.Comment) []commentJSON {
