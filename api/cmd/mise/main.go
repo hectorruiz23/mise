@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"mise/api/internal/buildinfo"
+	"mise/api/internal/githubinfo"
 	"mise/api/internal/panel"
 	"mise/api/internal/platform/db"
 	"mise/api/internal/platform/httpserver"
@@ -95,7 +96,7 @@ func run() error {
 		return err
 	}
 
-	tasksHandler := taskshttp.New(tasksService)
+	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{}))
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
 	registerRoutes(server, tasksHandler, usersHandler)
 	server.SetFallback(panel.Handler())
@@ -155,6 +156,7 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
 	server.HandleReadFunc("GET /api/tasks/{key}/deliveries", tasksHandler.ListDeliveries)
 	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
+	server.HandleReadFunc("GET /api/tasks/{key}/anchors", tasksHandler.Anchors)
 	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
 	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)

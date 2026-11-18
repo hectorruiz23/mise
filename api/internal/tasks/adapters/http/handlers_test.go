@@ -10,8 +10,10 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"mise/api/internal/githubinfo"
 	"mise/api/internal/platform/credential"
 	"mise/api/internal/platform/db"
 	"mise/api/internal/platform/httpserver"
@@ -34,13 +36,26 @@ type fixedClock struct{}
 func (fixedClock) Now() int64 { return 1_700_000_000 }
 
 type tasksEnv struct {
-	db     *sql.DB
-	http   *httptest.Server
-	cookie string
+	db         *sql.DB
+	http       *httptest.Server
+	cookie     string
+	githubHits *atomic.Int64
 }
 
 func newTasksEnv(t *testing.T) *tasksEnv {
 	t.Helper()
+	return newTasksEnvWithGitHub(t, defaultGitHubHandler)
+}
+
+func newTasksEnvWithGitHub(t *testing.T, githubHandler http.HandlerFunc) *tasksEnv {
+	t.Helper()
+
+	var githubHits atomic.Int64
+	githubServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		githubHits.Add(1)
+		githubHandler(w, r)
+	}))
+	t.Cleanup(githubServer.Close)
 
 	database, err := db.Open(filepath.Join(t.TempDir(), "mise.db"))
 	if err != nil {
@@ -74,7 +89,10 @@ func newTasksEnv(t *testing.T) *tasksEnv {
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
-	tasksHandler := taskshttp.New(tasksService)
+	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{
+		BaseURL: githubServer.URL,
+		Clock:   fixedClock{},
+	}))
 	usersHandler := usershttp.New(usersService, testOrigin)
 	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
@@ -92,6 +110,7 @@ func newTasksEnv(t *testing.T) *tasksEnv {
 	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
 	server.HandleReadFunc("GET /api/tasks/{key}/deliveries", tasksHandler.ListDeliveries)
 	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
+	server.HandleReadFunc("GET /api/tasks/{key}/anchors", tasksHandler.Anchors)
 	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
 	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
@@ -105,7 +124,27 @@ func newTasksEnv(t *testing.T) *tasksEnv {
 	}
 
 	_ = user
-	return &tasksEnv{db: database, http: httpServer, cookie: cookie}
+	return &tasksEnv{db: database, http: httpServer, cookie: cookie, githubHits: &githubHits}
+}
+
+func defaultGitHubHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/commits/main"):
+		_, _ = io.WriteString(w, `{"sha":"main-sha"}`)
+	case strings.Contains(r.URL.Path, "/pulls/"):
+		_, _ = io.WriteString(w, `{"state":"open","merged":false,"merge_commit_sha":null,"head":{"sha":"pr-sha","ref":"feature"}}`)
+	case strings.Contains(r.URL.Path, "/actions/runs/") && strings.HasSuffix(r.URL.Path, "/jobs"):
+		_, _ = io.WriteString(w, `{"total_count":3,"jobs":[
+			{"name":"api","status":"completed","conclusion":"success","html_url":"https://github.com/hectorruiz23/mise/actions/runs/100/job/1"},
+			{"name":"accept","status":"completed","conclusion":"success","html_url":"https://github.com/hectorruiz23/mise/actions/runs/100/job/2"},
+			{"name":"panel","status":"completed","conclusion":"success","html_url":"https://github.com/hectorruiz23/mise/actions/runs/100/job/3"}]}`)
+	case strings.HasSuffix(r.URL.Path, "/actions/runs"):
+		_, _ = io.WriteString(w, `{"total_count":1,"workflow_runs":[
+			{"id":100,"head_sha":"pr-sha","head_branch":"feature","event":"pull_request","status":"completed","conclusion":"success","run_attempt":1}]}`)
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 func (e *tasksEnv) request(t *testing.T, method, path, body string, prepare func(*http.Request)) *http.Response {

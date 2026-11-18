@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"mise/api/internal/githubinfo"
 	"mise/api/internal/kernel"
 	"mise/api/internal/platform/httpserver"
 	"mise/api/internal/tasks/app"
@@ -21,10 +22,18 @@ const maxIdempotencyKeyLength = 128
 
 type Handler struct {
 	service *app.Service
+	github  *githubinfo.Client
 }
 
 func New(service *app.Service) *Handler {
-	return &Handler{service: service}
+	return NewWithAnchors(service, githubinfo.New(githubinfo.Options{}))
+}
+
+func NewWithAnchors(service *app.Service, client *githubinfo.Client) *Handler {
+	if client == nil {
+		client = githubinfo.New(githubinfo.Options{})
+	}
+	return &Handler{service: service, github: client}
 }
 
 func (h *Handler) Create(w nethttp.ResponseWriter, r *nethttp.Request) {
