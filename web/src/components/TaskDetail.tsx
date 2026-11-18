@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import { formatDateTime, formatRelative, isoDate, leaseMinutesLeft } from '../dates'
 import { destinationsFor, requiresReason, type Capabilities } from '../permissions'
-import type { Me, State, Task, TaskDetail as TaskDetailData } from '../types'
+import type { Anchors as AnchorsData, BuildInfo, Me, State, Task, TaskDetail as TaskDetailData } from '../types'
 import { actorLabel, PRIORITY_LABELS, SIZE_LABELS, STATE_LABELS } from '../types'
+import { Anchors } from './Anchors'
 import { Comments } from './Comments'
-import { Deliveries } from './Deliveries'
+import { EarlierDeliveries, NewestDelivery, splitDeliveries } from './Deliveries'
 import { Movements } from './Movements'
 
 const FOCUSABLE =
@@ -48,6 +49,9 @@ export function TaskDetail({
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [notice, setNotice] = useState('')
+  const [anchors, setAnchors] = useState<AnchorsData | null>(null)
+  const [build, setBuild] = useState<BuildInfo | null>(null)
+  const [anchorsFailed, setAnchorsFailed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [destination, setDestination] = useState<State | ''>('')
   const [reason, setReason] = useState('')
@@ -100,6 +104,24 @@ export function TaskDetail({
     void load()
   }, [load])
 
+  const loadAnchors = useCallback(async () => {
+    try {
+      const [nextAnchors, nextBuild] = await Promise.all([api.anchors(taskKey), api.build()])
+      setAnchors(nextAnchors)
+      setBuild(nextBuild)
+      setAnchorsFailed(false)
+    } catch {
+      setAnchorsFailed(true)
+    }
+  }, [taskKey])
+
+  useEffect(() => {
+    setAnchors(null)
+    setBuild(null)
+    setAnchorsFailed(false)
+    void loadAnchors()
+  }, [loadAnchors])
+
   useEffect(() => {
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null
     closeButton.current?.focus()
@@ -120,7 +142,10 @@ export function TaskDetail({
   }, [])
 
   useEffect(() => {
-    const onFocus = () => void load(true)
+    const onFocus = () => {
+      void load(true)
+      void loadAnchors()
+    }
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
@@ -156,7 +181,7 @@ export function TaskDetail({
       window.removeEventListener('focus', onFocus)
       document.removeEventListener('keydown', onKey)
     }
-  }, [caps.canWrite, load, onClose])
+  }, [caps.canWrite, load, loadAnchors, onClose])
 
   useEffect(() => {
     if (menuOpen) firstMenuItem.current?.focus()
@@ -184,6 +209,7 @@ export function TaskDetail({
   }
 
   const task = detail?.task
+  const { newest, earlier } = splitDeliveries(detail?.deliveries ?? [])
   const destinations = task ? destinationsFor(me, task, detail ?? undefined) : []
   const reasonRequired = task !== undefined && destination !== '' && requiresReason(task.state, destination)
 
@@ -456,11 +482,8 @@ export function TaskDetail({
           <div className="ficha-columnas">
             <div className="ficha-columna ficha-texto" role="region" aria-label="Card" tabIndex={0}>
               <header className="sheet-header">
-                <div className="sheet-reference">
-                  <span className="proyecto">{task.project}</span>
-                  <span className="dato">{task.key}</span>
-                </div>
                 <h2 id="ficha-title">{task.title}</h2>
+                <Anchors anchors={anchors} build={build} failed={anchorsFailed} now={now} />
                 <div className="sheet-badges" aria-label="Card priority and size">
                   <span className="state-pill">{PRIORITY_LABELS[task.priority]} priority</span>
                   <span className="state-pill">{task.size ? SIZE_LABELS[task.size] : 'No size'}</span>
@@ -470,45 +493,22 @@ export function TaskDetail({
                     {leaseLine}
                   </p>
                 )}
-
-                <dl className="sheet-meta">
-                  <div>
-                    <dt>Project</dt>
-                    <dd>{task.project}</dd>
-                  </div>
-                  <div>
-                    <dt>Version</dt>
-                    <dd className="dato">v{task.version}</dd>
-                  </div>
-                  <div>
-                    <dt>Created</dt>
-                    <dd className="dato">
-                      <time dateTime={isoDate(task.created_at)}>{formatDateTime(task.created_at)}</time>{' '}
-                      <span className="relative">({formatRelative(task.created_at, now)})</span>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Updated</dt>
-                    <dd className="dato">
-                      <time dateTime={isoDate(task.updated_at)}>{formatDateTime(task.updated_at)}</time>{' '}
-                      <span className="relative">({formatRelative(task.updated_at, now)})</span>
-                    </dd>
-                  </div>
-                </dl>
-
-                {task.notes && (
-                  <div className="sheet-text">
-                    <h3>Notes</h3>
-                    <p>{task.notes}</p>
-                  </div>
-                )}
-                {task.acceptance && (
-                  <div className="sheet-text">
-                    <h3>Acceptance</h3>
-                    <p>{task.acceptance}</p>
-                  </div>
-                )}
               </header>
+
+              <NewestDelivery delivery={newest} caps={caps} now={now} />
+
+              {task.notes && (
+                <div className="sheet-text">
+                  <h3>Notes</h3>
+                  <p>{task.notes}</p>
+                </div>
+              )}
+              {task.acceptance && (
+                <div className="sheet-text">
+                  <h3>Acceptance</h3>
+                  <p>{task.acceptance}</p>
+                </div>
+              )}
 
               {notice && (
                 <p className="sheet-notice" role="status" aria-live="polite">
@@ -538,7 +538,37 @@ export function TaskDetail({
                 {caps.canWrite && menuOpen && menu}
               </div>
 
-              <Deliveries me={me} caps={caps} deliveries={detail.deliveries} task={task} now={now} />
+              <section className="sheet-section ficha-meta" aria-labelledby="meta-heading">
+                <div className="sheet-section-head">
+                  <h3 id="meta-heading">Metadata</h3>
+                </div>
+                <dl className="sheet-meta">
+                  <div>
+                    <dt>Project</dt>
+                    <dd>{task.project}</dd>
+                  </div>
+                  <div>
+                    <dt>Version</dt>
+                    <dd className="dato">v{task.version}</dd>
+                  </div>
+                  <div>
+                    <dt>Created</dt>
+                    <dd className="dato">
+                      <time dateTime={isoDate(task.created_at)}>{formatDateTime(task.created_at)}</time>{' '}
+                      <span className="relative">({formatRelative(task.created_at, now)})</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Updated</dt>
+                    <dd className="dato">
+                      <time dateTime={isoDate(task.updated_at)}>{formatDateTime(task.updated_at)}</time>{' '}
+                      <span className="relative">({formatRelative(task.updated_at, now)})</span>
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+
+              <EarlierDeliveries deliveries={earlier} now={now} />
               <Movements movements={detail.movements} now={now} />
             </div>
           </div>

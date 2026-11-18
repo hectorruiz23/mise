@@ -1,5 +1,7 @@
 import type {
+  Anchors,
   BoardData,
+  BuildInfo,
   Comment,
   CreateTaskInput,
   Delivery,
@@ -130,6 +132,10 @@ export const api = {
   },
 
   detail: (key: string) => request<TaskDetail>(`/api/tasks/${encodeURIComponent(key)}`),
+
+  anchors: (key: string) => request<Anchors>(`/api/tasks/${encodeURIComponent(key)}/anchors`),
+
+  build: () => request<BuildInfo>('/api/build'),
 
   movements: (key: string) =>
     request<Movement[]>(`/api/tasks/${encodeURIComponent(key)}/movements`),

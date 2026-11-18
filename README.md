@@ -85,7 +85,9 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | Route | What it does |
 |---|---|
 | `GET /api/health` | Liveness and database check. Public |
+| `GET /api/build` | Revision, repository and tree state of the binary that serves |
 | `GET /api/me` | The authenticated actor |
+| `GET /api/public/board` | Public snapshot for the portfolio. Public |
 | `GET /api/projects` | Projects and their keys |
 | `GET /api/board` | Five columns keyed by state, plus counts |
 | `GET /api/tasks?state=&project=&limit=` | One page, cursor in `next_cursor` |
@@ -99,6 +101,7 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | `DELETE /api/tasks/{key}/leases/{id}` | Release |
 | `GET /api/tasks/{key}/deliveries` | Deliveries with their evidence |
 | `POST /api/tasks/{key}/deliveries` | Hand the work back; moves the card to `review` |
+| `GET /api/tasks/{key}/anchors` | Pull request state and checks, cached and budgeted |
 | `GET /api/tasks/{key}/comments` | Comments |
 | `POST /api/tasks/{key}/comments` | Comment (an agent needs a live lease) |
 | `POST /api/sessions` | Token in, session cookie out |
