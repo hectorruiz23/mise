@@ -59,6 +59,68 @@ func TestVisitorReadsRedactedPaths(t *testing.T) {
 	}
 }
 
+func TestVisitorDeliveryHidesPathsInEvidenceItems(t *testing.T) {
+	env := newTasksEnv(t)
+
+	created := createTask(t, env, "redact-items", `{"project":"MI","title":"Evidencia"}`)
+	for _, step := range []struct {
+		version string
+		state   string
+	}{
+		{version: "1", state: "ready"},
+		{version: "2", state: "in_progress"},
+	} {
+		resp := env.request(t, http.MethodPatch, "/api/tasks/"+created.Key,
+			`{"state":"`+step.state+`"}`, func(req *http.Request) {
+				withBearer(req)
+				req.Header.Set("If-Match", `"`+step.version+`"`)
+			})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("move to %s status = %d, want 200", step.state, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+
+	resp := env.request(t, http.MethodPost, "/api/tasks/"+created.Key+"/deliveries",
+		`{"summary":"hecho en /home/hector/tmp","evidence_items":[{"label":"ruta /home/hector/Projects/mise","raw":"`+"`cd ~/Projects/mise`"+`"}]}`,
+		withBearer)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("structured delivery status = %d, want 201", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	if _, err := env.db.Exec(`UPDATE projects SET is_public = 1 WHERE key = 'MI'`); err != nil {
+		t.Fatalf("make MI public: %v", err)
+	}
+
+	visitor := env.request(t, http.MethodGet, "/api/tasks/"+created.Key, "", nil)
+	if visitor.StatusCode != http.StatusOK {
+		t.Fatalf("visitor detail status = %d, want 200", visitor.StatusCode)
+	}
+	detail := decode[struct {
+		Deliveries []struct {
+			Evidence      []string `json:"evidence"`
+			EvidenceItems []struct {
+				Label *string `json:"label"`
+				Raw   string  `json:"raw"`
+			} `json:"evidence_items"`
+		} `json:"deliveries"`
+	}](t, visitor)
+	if len(detail.Deliveries) != 1 || len(detail.Deliveries[0].EvidenceItems) != 1 {
+		t.Fatalf("visitor deliveries = %+v", detail.Deliveries)
+	}
+	item := detail.Deliveries[0].EvidenceItems[0]
+	if item.Label == nil || strings.Contains(*item.Label, "/home/hector") {
+		t.Fatalf("visitor still sees the label path: %v", item.Label)
+	}
+	if strings.Contains(item.Raw, "~/Projects") {
+		t.Fatalf("visitor still sees the raw path: %q", item.Raw)
+	}
+	if detail.Deliveries[0].Evidence[0] != item.Raw {
+		t.Fatalf("representations diverged: %q vs %q", detail.Deliveries[0].Evidence[0], item.Raw)
+	}
+}
+
 func TestVisitorBoardAndListHidePaths(t *testing.T) {
 	env := newTasksEnv(t)
 
