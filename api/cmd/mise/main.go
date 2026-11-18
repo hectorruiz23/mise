@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"mise/api/internal/buildinfo"
 	"mise/api/internal/panel"
 	"mise/api/internal/platform/db"
 	"mise/api/internal/platform/httpserver"
@@ -137,6 +138,7 @@ func run() error {
 }
 
 func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler) {
+	server.HandleReadFunc("GET /api/build", buildinfo.Handler())
 	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
 	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)
