@@ -3,9 +3,8 @@ import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import { formatDateTime, formatRelative, isoDate, leaseMinutesLeft } from '../dates'
 import { destinationsFor, requiresReason, type Capabilities } from '../permissions'
-import type { Anchors as AnchorsData, BuildInfo, Me, State, Task, TaskDetail as TaskDetailData } from '../types'
+import type { Anchors as AnchorsData, Me, State, Task, TaskDetail as TaskDetailData } from '../types'
 import { actorLabel, PRIORITY_LABELS, SIZE_LABELS, STATE_LABELS } from '../types'
-import { Anchors } from './Anchors'
 import { Comments } from './Comments'
 import { EarlierDeliveries, NewestDelivery, splitDeliveries } from './Deliveries'
 import { Movements } from './Movements'
@@ -50,8 +49,6 @@ export function TaskDetail({
   const [loadError, setLoadError] = useState('')
   const [notice, setNotice] = useState('')
   const [anchors, setAnchors] = useState<AnchorsData | null>(null)
-  const [build, setBuild] = useState<BuildInfo | null>(null)
-  const [anchorsFailed, setAnchorsFailed] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [destination, setDestination] = useState<State | ''>('')
   const [reason, setReason] = useState('')
@@ -106,19 +103,14 @@ export function TaskDetail({
 
   const loadAnchors = useCallback(async () => {
     try {
-      const [nextAnchors, nextBuild] = await Promise.all([api.anchors(taskKey), api.build()])
-      setAnchors(nextAnchors)
-      setBuild(nextBuild)
-      setAnchorsFailed(false)
+      setAnchors(await api.anchors(taskKey))
     } catch {
-      setAnchorsFailed(true)
+      setAnchors(null)
     }
   }, [taskKey])
 
   useEffect(() => {
     setAnchors(null)
-    setBuild(null)
-    setAnchorsFailed(false)
     void loadAnchors()
   }, [loadAnchors])
 
@@ -483,19 +475,9 @@ export function TaskDetail({
             <div className="ficha-columna ficha-texto" role="region" aria-label="Card" tabIndex={0}>
               <header className="sheet-header">
                 <h2 id="ficha-title">{task.title}</h2>
-                <Anchors anchors={anchors} build={build} failed={anchorsFailed} now={now} />
-                <div className="sheet-badges" aria-label="Card priority and size">
-                  <span className="state-pill">{PRIORITY_LABELS[task.priority]} priority</span>
-                  <span className="state-pill">{task.size ? SIZE_LABELS[task.size] : 'No size'}</span>
-                </div>
-                {leaseLine && (
-                  <p className={`lease sheet-lease${leaseLine === 'Lease expired' ? ' lease-expired' : ''}`}>
-                    {leaseLine}
-                  </p>
-                )}
               </header>
 
-              <NewestDelivery delivery={newest} caps={caps} now={now} />
+              <NewestDelivery delivery={newest} caps={caps} now={now} pr={anchors?.pr ?? null} />
 
               {task.notes && (
                 <div className="sheet-text">
@@ -551,6 +533,20 @@ export function TaskDetail({
                     <dt>Version</dt>
                     <dd className="dato">v{task.version}</dd>
                   </div>
+                  <div>
+                    <dt>Priority</dt>
+                    <dd>{PRIORITY_LABELS[task.priority]}</dd>
+                  </div>
+                  <div>
+                    <dt>Size</dt>
+                    <dd>{task.size ? SIZE_LABELS[task.size] : 'No size'}</dd>
+                  </div>
+                  {leaseLine && (
+                    <div>
+                      <dt>Lease</dt>
+                      <dd className={leaseLine === 'Lease expired' ? 'lease-expired' : undefined}>{leaseLine}</dd>
+                    </div>
+                  )}
                   <div>
                     <dt>Created</dt>
                     <dd className="dato">

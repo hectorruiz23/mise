@@ -1,7 +1,8 @@
 import { formatDateTime, formatRelative, isoDate } from '../dates'
 import type { Capabilities } from '../permissions'
-import type { Delivery, EvidenceItem } from '../types'
+import type { Delivery, EvidenceItem, PullRequestAnchor } from '../types'
 import { actorLabel } from '../types'
+import { PullRequestChip } from './Anchors'
 
 type EvidenceKind = 'link' | 'command' | 'artifact' | 'measured' | 'unclassified'
 
@@ -91,10 +92,12 @@ export function NewestDelivery({
   delivery,
   caps,
   now,
+  pr,
 }: {
   delivery: Delivery | null
   caps: Capabilities
   now: number
+  pr: PullRequestAnchor | null
 }) {
   if (delivery === null) {
     return <p className="sheet-empty">No deliveries yet.</p>
@@ -105,9 +108,12 @@ export function NewestDelivery({
 
   return (
     <section className="entrega-nueva" aria-labelledby="entrega-nueva-titulo">
-      <p className="entrega-kicker" id="entrega-nueva-titulo">
-        {caps.canWrite ? 'Newest delivery — this is what you are approving.' : 'Newest delivery.'}
-      </p>
+      <div className="entrega-cab">
+        <p className="entrega-kicker" id="entrega-nueva-titulo">
+          {caps.canWrite ? 'Newest delivery — this is what you are approving.' : 'Newest delivery.'}
+        </p>
+        <PullRequestChip anchor={pr} now={now} />
+      </div>
       <p className="entrega-veredicto">
         <span className="entrega-que">What was done — the index</span>
         {head}
