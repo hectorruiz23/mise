@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"mise/api/internal/buildinfo"
 	"mise/api/internal/platform/credential"
 	"mise/api/internal/platform/db"
 	"mise/api/internal/platform/httpserver"
@@ -88,6 +89,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	tasksHandler := taskshttp.New(tasksService)
 	usersHandler := usershttp.New(usersService, "https://mise.example")
+	server.HandleReadFunc("GET /api/build", buildinfo.Handler())
 	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
 	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)

@@ -8,12 +8,17 @@ RUN npm run build
 FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm AS build
 ARG TARGETOS
 ARG TARGETARCH
+ARG REVISION=""
+ARG TREE_STATE="unknown"
+ARG REPOSITORY="github.com/hectorruiz23/mise"
 WORKDIR /src/api
 COPY api/go.mod api/go.sum ./
 RUN go mod download
 COPY api/ ./
 COPY --from=panel /src/web/dist ./internal/panel/dist
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/mise ./cmd/mise
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
+    -ldflags="-s -w -X mise/api/internal/buildinfo.revision=${REVISION} -X mise/api/internal/buildinfo.treeState=${TREE_STATE} -X mise/api/internal/buildinfo.repository=${REPOSITORY}" \
+    -o /out/mise ./cmd/mise
 
 FROM alpine:3.21
 WORKDIR /app
