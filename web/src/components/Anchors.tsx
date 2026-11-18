@@ -1,10 +1,5 @@
 import { formatRelative } from '../dates'
-import type { Anchors as AnchorsData, BuildInfo, Envelope, PullRequestAnchor } from '../types'
-
-function shortSha(sha: string | null | undefined): string {
-  if (!sha) return 'unknown'
-  return sha.slice(0, 8)
-}
+import type { Envelope, PullRequestAnchor } from '../types'
 
 function retryLine(envelope: Envelope<unknown>, now: number): string {
   if (!envelope.retry_at) return ''
@@ -28,14 +23,16 @@ function ageLine(envelope: Envelope<unknown>, now: number): string {
   return ''
 }
 
-function pullRequestClass(state: string): string {
+function stateClass(state: string): string {
   if (state === 'merged') return 'merged'
   if (state === 'open') return 'open'
   if (state === 'closed') return 'closed'
   return 'unknown'
 }
 
-function PullRequestChip({ anchor, now }: { anchor: PullRequestAnchor; now: number }) {
+export function PullRequestChip({ anchor, now }: { anchor: PullRequestAnchor | null; now: number }) {
+  if (anchor === null) return null
+
   if (anchor.kind === 'link') {
     return (
       <a className="ancla ancla-neutra" href={anchor.url} target="_blank" rel="noreferrer">
@@ -58,7 +55,7 @@ function PullRequestChip({ anchor, now }: { anchor: PullRequestAnchor; now: numb
   const sub = [checksResult ? `checks ${checksResult}` : '', checksAge].filter(Boolean).join(' · ')
 
   return (
-    <a className={`ancla ancla-pr ${pullRequestClass(state)}`} href={anchor.url} target="_blank" rel="noreferrer">
+    <a className={`ancla ancla-pr ${stateClass(state)}`} href={anchor.url} target="_blank" rel="noreferrer">
       <span className="ancla-icono" aria-hidden="true">
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
           <circle cx="4" cy="3.5" r="1.6" />
@@ -77,62 +74,5 @@ function PullRequestChip({ anchor, now }: { anchor: PullRequestAnchor; now: numb
         <span className="ancla-sub">{sub || 'checks unavailable'}</span>
       </span>
     </a>
-  )
-}
-
-function RevisionChip({ anchors, build, now }: { anchors: AnchorsData | null; build: BuildInfo | null; now: number }) {
-  const serving = build?.revision ? shortSha(build.revision) : 'unknown'
-  const local = build !== null && build.revision === null
-  const mainKnown = anchors !== null && (anchors.main.status === 'fresh' || anchors.main.status === 'stale')
-  const mainLine = mainKnown
-    ? `main ${shortSha(anchors?.main.data)}`
-    : anchors === null
-      ? 'main …'
-      : `main ${ageLine(anchors.main, now) || 'unknown'}`
-
-  const sub = build?.tree_state === 'dirty' ? 'local build · tree_state dirty' : local ? 'built without git' : mainLine
-
-  return (
-    <span className="ancla ancla-rev">
-      <span className="ancla-icono" aria-hidden="true">
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-          <circle cx="8" cy="8" r="6" />
-          <path d="M8 4.6v3.8l2.4 1.4" />
-        </svg>
-      </span>
-      <span className="ancla-cuerpo">
-        <span className="ancla-titulo">serving {serving}</span>
-        <span className="ancla-sub">{sub}</span>
-      </span>
-    </span>
-  )
-}
-
-export function Anchors({
-  anchors,
-  build,
-  failed,
-  now,
-}: {
-  anchors: AnchorsData | null
-  build: BuildInfo | null
-  failed: boolean
-  now: number
-}) {
-  if (anchors === null && build === null) {
-    return (
-      <div className="sheet-anclas" aria-live="polite">
-        <span className="ancla ancla-cargando">
-          {failed ? 'unavailable — the server did not answer' : 'Loading…'}
-        </span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="sheet-anclas">
-      {anchors?.pr ? <PullRequestChip anchor={anchors.pr} now={now} /> : null}
-      <RevisionChip anchors={anchors} build={build} now={now} />
-    </div>
   )
 }
