@@ -81,7 +81,7 @@ func TestLegacyEvidenceReadsAsUnlabelledItems(t *testing.T) {
 	if _, err := database.Exec(`
 		INSERT INTO deliveries (task_key, lease_id, summary, evidence, created_at, actor_id)
 		VALUES (?, NULL, 'Legacy', ?, ?, 1)`,
-		created.Key, `["old proof","/home/hector/file"]`, testNow); err != nil {
+		created.Key, `["old proof","/home/someone/file"]`, testNow); err != nil {
 		t.Fatalf("insert legacy delivery: %v", err)
 	}
 

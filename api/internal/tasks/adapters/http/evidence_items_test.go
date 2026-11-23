@@ -178,7 +178,7 @@ func TestLegacyEvidenceReadsAsUnlabelledItems(t *testing.T) {
 	if _, err := env.db.Exec(`
 		INSERT INTO deliveries (task_key, lease_id, summary, evidence, created_at, actor_id)
 		VALUES (?, NULL, 'Legacy delivery', ?, 1700000000, ?)`,
-		task.Key, `["legacy proof","/home/hector/legacy/file"]`, env.agents[mutHumanToken]); err != nil {
+		task.Key, `["legacy proof","/home/someone/legacy/file"]`, env.agents[mutHumanToken]); err != nil {
 		t.Fatalf("insert legacy delivery: %v", err)
 	}
 
@@ -191,7 +191,7 @@ func TestLegacyEvidenceReadsAsUnlabelledItems(t *testing.T) {
 		t.Fatalf("detail deliveries = %d, want 1", len(detail.Deliveries))
 	}
 	legacy := detail.Deliveries[0]
-	requireUniformEvidence(t, legacy, []string{"legacy proof", "/home/hector/legacy/file"})
+	requireUniformEvidence(t, legacy, []string{"legacy proof", "/home/someone/legacy/file"})
 	for index, item := range legacy.EvidenceItems {
 		if item.Label != nil {
 			t.Errorf("legacy item %d label = %v, want null", index, *item.Label)
@@ -206,7 +206,7 @@ func TestLegacyEvidenceReadsAsUnlabelledItems(t *testing.T) {
 	if len(list) != 1 {
 		t.Fatalf("deliveries = %d, want 1", len(list))
 	}
-	requireUniformEvidence(t, list[0], []string{"legacy proof", "/home/hector/legacy/file"})
+	requireUniformEvidence(t, list[0], []string{"legacy proof", "/home/someone/legacy/file"})
 }
 
 func TestLegacyEvidenceWritesStayStrings(t *testing.T) {
