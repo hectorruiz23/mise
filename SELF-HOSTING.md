@@ -112,6 +112,36 @@ cancelled it and when. The dependent task stays in backlog and can be moved, edi
 a verification that arrives afterwards cannot release it, and the cancelled plan stays as the record of
 that pair.
 
+## Required checks and submissions
+
+A human sets the checks every delivery of a project must pass:
+
+```sh
+curl -s -X PATCH https://mise.example/api/projects/MI \
+  -H "Authorization: Bearer $MISE_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"required_checks":["build","unit"]}'
+```
+
+The names are the ones GitHub reports for the checks (`check-runs`), and a project with an empty list has no
+check gate: deliveries behave as before. The set is copied into each submission, so editing it later never
+rewrites a verdict already given.
+
+An agent holding a live lease can link the card to its pull request before delivering, and read the verdict
+at that moment:
+
+```sh
+curl -s -X POST https://mise.example/api/tasks/MI-1/submissions \
+  -H "Authorization: Bearer $MISE_AGENT_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"pr_url":"https://github.com/owner/repo/pull/12","head_sha":"<40 hex>"}'
+```
+
+A delivery carries `head_sha`; in a gated project it is required, and the patch request checks the exact
+revision. `409 checks_failed` means a required check failed: the card stays `in_progress`, the attempt is
+recorded and the same lease can fix and deliver a new revision. `409 checks_pending` means the checks are
+still running, cancelled or timed out, and no attempt is spent. The second distinct revision that fails
+moves the card to `blocked` with the attempt history; leaving `blocked` is still a human move. A revision
+delivered twice is the same submission and never counts twice.
+
 `MISE_PUBLIC_ORIGIN` does two jobs: it decides whether the session cookie carries `Secure`, and it is
 what the CSRF check compares against the request's `Origin` header. With it empty, every `POST`,
 `PUT`, `PATCH` and `DELETE` answers `403 origin check failed` — the service fails closed, so a global

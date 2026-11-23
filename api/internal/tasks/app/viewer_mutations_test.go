@@ -234,3 +234,33 @@ func TestViewerIsRefusedBeforeInputValidation(t *testing.T) {
 		t.Errorf("Deliver code = %q, want %q", code, domain.CodeForbidden)
 	}
 }
+
+func (r untouchedRepo) ProjectChecks(_ context.Context, _ string) ([]string, error) {
+	r.touch("ProjectChecks")
+	return nil, nil
+}
+
+func (r untouchedRepo) SetProjectChecks(_ context.Context, _ string, _ []string, _ int64) error {
+	r.touch("SetProjectChecks")
+	return nil
+}
+
+func (r untouchedRepo) UpsertSubmission(_ context.Context, s domain.Submission) (domain.Submission, error) {
+	r.touch("UpsertSubmission")
+	return s, nil
+}
+
+func (r untouchedRepo) MarkSubmissionDelivered(_ context.Context, _ int64, _ int64) error {
+	r.touch("MarkSubmissionDelivered")
+	return nil
+}
+
+func (r untouchedRepo) CountFailedAttempts(_ context.Context, _ string) (int, error) {
+	r.touch("CountFailedAttempts")
+	return 0, nil
+}
+
+func (r untouchedRepo) ListSubmissions(_ context.Context, _ string, _ app.ReadScope) ([]domain.Submission, error) {
+	r.touch("ListSubmissions")
+	return nil, nil
+}

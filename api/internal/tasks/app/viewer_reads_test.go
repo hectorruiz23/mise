@@ -163,3 +163,8 @@ func TestUnknownActorIsForbiddenOnReads(t *testing.T) {
 		})
 	}
 }
+
+func (r *scopeRepo) ListSubmissions(_ context.Context, _ string, scope app.ReadScope) ([]domain.Submission, error) {
+	r.record(scope)
+	return nil, nil
+}

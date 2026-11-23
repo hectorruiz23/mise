@@ -38,6 +38,13 @@ type Repo interface {
 	ListMovements(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Movement, error)
 	CreateComment(ctx context.Context, c domain.Comment) (domain.Comment, error)
 	ListComments(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Comment, error)
+
+	ProjectChecks(ctx context.Context, projectKey string) ([]string, error)
+	SetProjectChecks(ctx context.Context, projectKey string, checks []string, now int64) error
+	UpsertSubmission(ctx context.Context, s domain.Submission) (domain.Submission, error)
+	MarkSubmissionDelivered(ctx context.Context, id int64, now int64) error
+	CountFailedAttempts(ctx context.Context, taskKey string) (int, error)
+	ListSubmissions(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Submission, error)
 }
 
 type Clock interface{ Now() int64 }
@@ -99,17 +106,18 @@ type Cards struct {
 }
 
 type Project struct {
-	Key         string
-	Name        string
-	IsPublic    bool
-	SortOrder   int
-	Description *string
-	RepoURL     *string
-	DemoURL     *string
-	PublicState *string
-	State       string
-	Cards       Cards
-	LastActive  *int64
+	Key            string
+	Name           string
+	IsPublic       bool
+	SortOrder      int
+	Description    *string
+	RepoURL        *string
+	DemoURL        *string
+	PublicState    *string
+	RequiredChecks []string
+	State          string
+	Cards          Cards
+	LastActive     *int64
 }
 
 type Board struct {
@@ -119,20 +127,26 @@ type Board struct {
 }
 
 type Detail struct {
-	Task       domain.Task
-	Movements  []domain.Movement
-	Leases     []domain.Lease
-	Deliveries []domain.Delivery
-	Comments   []domain.Comment
+	Task        domain.Task
+	Movements   []domain.Movement
+	Leases      []domain.Lease
+	Deliveries  []domain.Delivery
+	Comments    []domain.Comment
+	Submissions []domain.Submission
 }
 
 type Service struct {
-	repo  Repo
-	clock Clock
+	repo   Repo
+	clock  Clock
+	checks Checks
 }
 
 func New(repo Repo, clock Clock) *Service {
 	return &Service{repo: repo, clock: clock}
+}
+
+func NewWithChecks(repo Repo, clock Clock, checks Checks) *Service {
+	return &Service{repo: repo, clock: clock, checks: checks}
 }
 
 func (s *Service) Create(ctx context.Context, p CreateParams) (domain.Task, bool, error) {
@@ -509,7 +523,21 @@ func (s *Service) Deliver(
 	evidence []string,
 	prURL *string,
 ) (domain.Task, domain.Delivery, error) {
-	return s.deliver(ctx, key, actor, leaseID, summary, evidence, nil, prURL)
+	return s.deliver(ctx, key, actor, leaseID, summary, evidence, nil, prURL, nil)
+}
+
+func (s *Service) DeliverRevision(
+	ctx context.Context,
+	key string,
+	actor domain.Actor,
+	leaseID *int64,
+	summary string,
+	evidence []string,
+	items []domain.EvidenceItem,
+	prURL *string,
+	headSHA *string,
+) (domain.Task, domain.Delivery, error) {
+	return s.deliver(ctx, key, actor, leaseID, summary, evidence, items, prURL, headSHA)
 }
 
 func (s *Service) DeliverItems(
@@ -521,7 +549,7 @@ func (s *Service) DeliverItems(
 	items []domain.EvidenceItem,
 	prURL *string,
 ) (domain.Task, domain.Delivery, error) {
-	return s.deliver(ctx, key, actor, leaseID, summary, nil, items, prURL)
+	return s.deliver(ctx, key, actor, leaseID, summary, nil, items, prURL, nil)
 }
 
 func (s *Service) deliver(
@@ -533,6 +561,7 @@ func (s *Service) deliver(
 	evidence []string,
 	items []domain.EvidenceItem,
 	prURL *string,
+	headSHA *string,
 ) (domain.Task, domain.Delivery, error) {
 	if err := viewerForbidden(actor); err != nil {
 		return domain.Task{}, domain.Delivery{}, err
@@ -554,6 +583,44 @@ func (s *Service) deliver(
 		}
 	}
 
+	var submission *domain.Submission
+	required, err := s.repo.ProjectChecks(ctx, task.ProjectKey)
+	if err != nil {
+		return domain.Task{}, domain.Delivery{}, err
+	}
+	if len(required) > 0 {
+		if headSHA == nil || strings.TrimSpace(*headSHA) == "" {
+			return domain.Task{}, domain.Delivery{}, invalidInput("head_sha is required for a project with required checks")
+		}
+		if prURL == nil || strings.TrimSpace(*prURL) == "" {
+			return domain.Task{}, domain.Delivery{}, invalidInput("pr_url is required for a project with required checks")
+		}
+		built, err := s.snapshotSubmission(ctx, task, prURL, *headSHA, now)
+		if err != nil {
+			return domain.Task{}, domain.Delivery{}, err
+		}
+		stored, err := s.repo.UpsertSubmission(ctx, built)
+		if err != nil {
+			return domain.Task{}, domain.Delivery{}, err
+		}
+		switch stored.Verdict {
+		case domain.VerdictOpen:
+			return domain.Task{}, domain.Delivery{}, &domain.RuleError{
+				Code: domain.CodeChecksPending,
+				Msg:  "the checks for this revision are not conclusive yet",
+			}
+		case domain.VerdictFailed:
+			if err := s.recordFailedAttempt(ctx, task, actor, stored, now); err != nil {
+				return domain.Task{}, domain.Delivery{}, err
+			}
+			return domain.Task{}, domain.Delivery{}, &domain.RuleError{
+				Code: domain.CodeChecksFailed,
+				Msg:  "the delivered revision failed: " + domain.FailedChecks(stored.Checks),
+			}
+		}
+		submission = &stored
+	}
+
 	var next domain.Task
 	var delivery domain.Delivery
 	var movement domain.Movement
@@ -565,8 +632,14 @@ func (s *Service) deliver(
 	if err != nil {
 		return domain.Task{}, domain.Delivery{}, err
 	}
+	delivery.HeadSHA = headSHA
 	if err := s.repo.Deliver(ctx, next, delivery, movement, task.Version); err != nil {
 		return domain.Task{}, domain.Delivery{}, err
+	}
+	if submission != nil {
+		if err := s.repo.MarkSubmissionDelivered(ctx, submission.ID, now); err != nil {
+			return domain.Task{}, domain.Delivery{}, err
+		}
 	}
 
 	deliveries, err := s.repo.ListDeliveries(ctx, key, AllProjects)
@@ -605,13 +678,18 @@ func (s *Service) Detail(ctx context.Context, actor domain.Actor, key string) (D
 	if err != nil {
 		return Detail{}, err
 	}
+	submissions, err := s.repo.ListSubmissions(ctx, key, scope)
+	if err != nil {
+		return Detail{}, err
+	}
 
 	return Detail{
-		Task:       task,
-		Movements:  movements,
-		Leases:     leases,
-		Deliveries: deliveries,
-		Comments:   comments,
+		Task:        task,
+		Movements:   movements,
+		Leases:      leases,
+		Deliveries:  deliveries,
+		Comments:    comments,
+		Submissions: submissions,
 	}, nil
 }
 

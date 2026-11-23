@@ -17,6 +17,8 @@ const (
 	CodeSignupConsumed       = "signup_consumed"
 	CodeUnauthorized         = "unauthorized"
 	CodeSessionExpired       = "session_expired"
+	CodeChecksFailed         = "checks_failed"
+	CodeChecksPending        = "checks_pending"
 )
 
 type RuleError struct {

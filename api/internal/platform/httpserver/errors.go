@@ -49,7 +49,9 @@ func ErrorStatus(code string) int {
 		kernel.CodeConflict,
 		kernel.CodeReasonRequired,
 		kernel.CodeEvidenceRequired,
-		kernel.CodeLeaseRequired:
+		kernel.CodeLeaseRequired,
+		kernel.CodeChecksFailed,
+		kernel.CodeChecksPending:
 		return http.StatusConflict
 	case kernel.CodeStaleVersion:
 		return http.StatusPreconditionFailed
