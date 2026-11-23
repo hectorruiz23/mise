@@ -257,7 +257,7 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 	label := "list projects"
 	query := `
 		SELECT p.key, p.name, p.is_public, p.sort_order, p.description, p.repo_url,
-		       p.demo_url, p.public_state, p.required_checks,
+		       p.demo_url, p.public_state, p.required_checks, p.auto_dispatch, p.dispatch_limit,
 		       COALESCE(t.total, 0), COALESCE(t.cerradas, 0), COALESCE(t.en_curso, 0),
 		       t.ultima
 		FROM projects p
@@ -290,27 +290,31 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 	projects := make([]app.Project, 0, 3)
 	for rows.Next() {
 		var (
-			project     app.Project
-			isPublic    int
-			description sql.NullString
-			repoURL     sql.NullString
-			demoURL     sql.NullString
-			publicState sql.NullString
-			requiredRaw string
-			total       int
-			cerradas    int
-			enCurso     int
-			lastActive  sql.NullInt64
+			project       app.Project
+			isPublic      int
+			description   sql.NullString
+			repoURL       sql.NullString
+			demoURL       sql.NullString
+			publicState   sql.NullString
+			requiredRaw   string
+			autoDispatch  int
+			dispatchLimit int
+			total         int
+			cerradas      int
+			enCurso       int
+			lastActive    sql.NullInt64
 		)
 		if err := rows.Scan(
 			&project.Key, &project.Name, &isPublic, &project.SortOrder,
-			&description, &repoURL, &demoURL, &publicState, &requiredRaw,
+			&description, &repoURL, &demoURL, &publicState, &requiredRaw, &autoDispatch, &dispatchLimit,
 			&total, &cerradas, &enCurso, &lastActive,
 		); err != nil {
 			return nil, fmt.Errorf("%s: scan: %w", label, err)
 		}
 
 		project.IsPublic = isPublic == 1
+		project.AutoDispatch = autoDispatch == 1
+		project.DispatchLimit = dispatchLimit
 		project.RequiredChecks, err = decodeChecks(requiredRaw)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", label, err)

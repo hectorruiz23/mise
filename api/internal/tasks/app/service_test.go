@@ -716,3 +716,19 @@ func (r *fakeRepo) CountFailedAttempts(_ context.Context, _ string) (int, error)
 func (r *fakeRepo) ListSubmissions(_ context.Context, _ string, _ app.ReadScope) ([]domain.Submission, error) {
 	return nil, nil
 }
+
+func (r *fakeRepo) DispatchPolicy(_ context.Context, _ string) (app.DispatchPolicy, error) {
+	return app.DispatchPolicy{}, nil
+}
+
+func (r *fakeRepo) SetProjectDispatch(_ context.Context, _ string, _ bool, _ int, _ int64) error {
+	return nil
+}
+
+func (r *fakeRepo) CountLeases(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (r *fakeRepo) CountReopens(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}

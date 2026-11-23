@@ -264,3 +264,23 @@ func (r untouchedRepo) ListSubmissions(_ context.Context, _ string, _ app.ReadSc
 	r.touch("ListSubmissions")
 	return nil, nil
 }
+
+func (r untouchedRepo) DispatchPolicy(_ context.Context, _ string) (app.DispatchPolicy, error) {
+	r.touch("DispatchPolicy")
+	return app.DispatchPolicy{}, nil
+}
+
+func (r untouchedRepo) SetProjectDispatch(_ context.Context, _ string, _ bool, _ int, _ int64) error {
+	r.touch("SetProjectDispatch")
+	return nil
+}
+
+func (r untouchedRepo) CountLeases(_ context.Context, _ string) (int, error) {
+	r.touch("CountLeases")
+	return 0, nil
+}
+
+func (r untouchedRepo) CountReopens(_ context.Context, _ string) (int, error) {
+	r.touch("CountReopens")
+	return 0, nil
+}

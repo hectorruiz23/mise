@@ -17,6 +17,7 @@ const (
 	CodeConflict             = kernel.CodeConflict
 	CodeChecksFailed         = kernel.CodeChecksFailed
 	CodeChecksPending        = kernel.CodeChecksPending
+	CodeDispatchExhausted    = kernel.CodeDispatchExhausted
 	CodeNotFound             = kernel.CodeNotFound
 	CodeSignupPending        = kernel.CodeSignupPending
 	CodeSignupConsumed       = kernel.CodeSignupConsumed

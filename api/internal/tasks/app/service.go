@@ -36,6 +36,11 @@ type Repo interface {
 	ListLeases(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Lease, error)
 	ListDeliveries(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Delivery, error)
 	ListMovements(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Movement, error)
+	DispatchPolicy(ctx context.Context, projectKey string) (DispatchPolicy, error)
+	SetProjectDispatch(ctx context.Context, projectKey string, enabled bool, limit int, now int64) error
+	CountLeases(ctx context.Context, taskKey string) (int, error)
+	CountReopens(ctx context.Context, taskKey string) (int, error)
+
 	CreateComment(ctx context.Context, c domain.Comment) (domain.Comment, error)
 	ListComments(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Comment, error)
 
@@ -115,6 +120,8 @@ type Project struct {
 	DemoURL        *string
 	PublicState    *string
 	RequiredChecks []string
+	AutoDispatch   bool
+	DispatchLimit  int
 	State          string
 	Cards          Cards
 	LastActive     *int64
@@ -434,6 +441,10 @@ func (s *Service) Acquire(ctx context.Context, key string, agent domain.Actor) (
 	}
 	task, err := s.repo.GetTask(ctx, key, AllProjects)
 	if err != nil {
+		return domain.Task{}, domain.Lease{}, err
+	}
+
+	if err := s.checkDispatchBudget(ctx, task); err != nil {
 		return domain.Task{}, domain.Lease{}, err
 	}
 
