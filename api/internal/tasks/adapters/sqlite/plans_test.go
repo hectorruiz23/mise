@@ -134,10 +134,9 @@ func TestPlanRejectsBrokenGraphs(t *testing.T) {
 		[]domain.PlanEdge{}, policy, testNow); err == nil {
 		t.Fatal("an agent approved a plan")
 	}
-	if _, err := repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key},
-		[]domain.PlanEdge{{From: a.Key, To: b.Key, Kind: domain.EdgeDeployment}}, policy, testNow); err != nil {
-		t.Fatalf("the schema rejected a deployment edge: %v", err)
-	}
+	_, err = repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key},
+		[]domain.PlanEdge{{From: a.Key, To: b.Key, Kind: domain.EdgeDeployment}}, policy, testNow)
+	wantRuleCode(t, err, domain.CodeInvalidInput)
 }
 
 func TestPlanCancellationLeavesBacklog(t *testing.T) {

@@ -30,6 +30,11 @@ func (r *Repo) ApproveGraph(
 	if err := domain.ValidatePlanEdges(tasks, edges); err != nil {
 		return app.PlanGraph{}, err
 	}
+	for _, edge := range edges {
+		if edge.Kind == domain.EdgeDeployment {
+			return app.PlanGraph{}, invalidInput("deployment edges are not accepted yet")
+		}
+	}
 	var planID int64
 	err := r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
 		projects := make(map[string]struct{}, 1)
