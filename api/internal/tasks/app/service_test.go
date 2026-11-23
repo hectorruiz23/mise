@@ -732,3 +732,7 @@ func (r *fakeRepo) CountLeases(_ context.Context, _ string) (int, error) {
 func (r *fakeRepo) CountReopens(_ context.Context, _ string) (int, error) {
 	return 0, nil
 }
+
+func (r *fakeRepo) RecordDelivery(_ context.Context, _ domain.Delivery) error {
+	return nil
+}

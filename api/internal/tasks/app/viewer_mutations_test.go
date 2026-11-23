@@ -284,3 +284,8 @@ func (r untouchedRepo) CountReopens(_ context.Context, _ string) (int, error) {
 	r.touch("CountReopens")
 	return 0, nil
 }
+
+func (r untouchedRepo) RecordDelivery(_ context.Context, _ domain.Delivery) error {
+	r.touch("RecordDelivery")
+	return nil
+}

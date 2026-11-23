@@ -84,8 +84,8 @@ func TestSubmissionGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(detail.Deliveries) != 0 {
-		t.Fatalf("a failed submission stored a delivery: %+v", detail.Deliveries)
+	if len(detail.Deliveries) != 1 || detail.Deliveries[0].HeadSHA == nil {
+		t.Fatalf("the failed attempt left no delivery with its revision: %+v", detail.Deliveries)
 	}
 	failures, err := repo.CountFailedAttempts(ctx, task.Key)
 	if err != nil || failures != 1 {

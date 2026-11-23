@@ -118,7 +118,27 @@ func (s *Service) recordFailedAttempt(
 	actor domain.Actor,
 	submission domain.Submission,
 	now int64,
+	lease *domain.Lease,
+	summary string,
+	evidence []string,
+	items []domain.EvidenceItem,
+	prURL *string,
+	headSHA *string,
 ) error {
+	_, delivery, _, err := domain.ApplyDeliveryItems(task, lease, actor, summary, items, prURL, now)
+	if err != nil {
+		return err
+	}
+	if evidence != nil {
+		_, delivery, _, err = domain.ApplyDelivery(task, lease, actor, summary, evidence, prURL, now)
+		if err != nil {
+			return err
+		}
+	}
+	delivery.HeadSHA = headSHA
+	if err := s.repo.RecordDelivery(ctx, delivery); err != nil {
+		return err
+	}
 	if err := s.repo.MarkSubmissionDelivered(ctx, submission.ID, now); err != nil {
 		return err
 	}

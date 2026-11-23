@@ -36,6 +36,7 @@ type Repo interface {
 	ListLeases(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Lease, error)
 	ListDeliveries(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Delivery, error)
 	ListMovements(ctx context.Context, taskKey string, scope ReadScope) ([]domain.Movement, error)
+	RecordDelivery(ctx context.Context, d domain.Delivery) error
 	DispatchPolicy(ctx context.Context, projectKey string) (DispatchPolicy, error)
 	SetProjectDispatch(ctx context.Context, projectKey string, enabled bool, limit int, now int64) error
 	CountLeases(ctx context.Context, taskKey string) (int, error)
@@ -621,7 +622,7 @@ func (s *Service) deliver(
 				Msg:  "the checks for this revision are not conclusive yet",
 			}
 		case domain.VerdictFailed:
-			if err := s.recordFailedAttempt(ctx, task, actor, stored, now); err != nil {
+			if err := s.recordFailedAttempt(ctx, task, actor, stored, now, lease, summary, evidence, items, prURL, headSHA); err != nil {
 				return domain.Task{}, domain.Delivery{}, err
 			}
 			return domain.Task{}, domain.Delivery{}, &domain.RuleError{

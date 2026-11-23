@@ -89,6 +89,21 @@ func (r *Repo) UpsertSubmission(ctx context.Context, s domain.Submission) (domai
 	return stored, nil
 }
 
+func (r *Repo) RecordDelivery(ctx context.Context, d domain.Delivery) error {
+	evidence, err := encodeEvidence(d)
+	if err != nil {
+		return fmt.Errorf("record delivery for %q: encode evidence: %w", d.TaskKey, err)
+	}
+	if _, err := r.db.ExecContext(ctx, `INSERT INTO deliveries
+		(task_key, lease_id, summary, evidence, pr_url, head_sha, created_at, actor_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.TaskKey, nullableInt64(d.LeaseID), d.Summary, string(evidence),
+		nullableText(d.PRURL), nullableText(d.HeadSHA), d.CreatedAt, d.ActorID); err != nil {
+		return fmt.Errorf("record delivery for %q: %w", d.TaskKey, err)
+	}
+	return nil
+}
+
 func (r *Repo) MarkSubmissionDelivered(ctx context.Context, id int64, now int64) error {
 	if _, err := r.db.ExecContext(ctx,
 		`UPDATE submissions SET delivered_at = coalesce(delivered_at, ?) WHERE id = ?`, now, id); err != nil {
