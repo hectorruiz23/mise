@@ -60,7 +60,8 @@ func TestVerifiedDependencyFlow(t *testing.T) {
 	}
 	policy := app.PlanPolicy{Repository: "example/project", Branch: "main", WorkflowID: 15}
 	plans := taskshttp.NewDependencyPlans(repo, policy, clock)
-	registerRoutes(server, taskshttp.New(tasks), usershttp.New(usersService, origin), plans)
+	registerRoutes(server, taskshttp.New(tasks), usershttp.New(usersService, origin), plans,
+		taskshttp.NewGraphs(repo, policy, clock))
 	call := func(method, path, body, token string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Origin", origin)

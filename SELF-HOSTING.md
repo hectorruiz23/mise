@@ -112,6 +112,32 @@ cancelled it and when. The dependent task stays in backlog and can be moved, edi
 a verification that arrives afterwards cannot release it, and the cancelled plan stays as the record of
 that pair.
 
+## Plan graphs
+
+A plan is a graph of two or more tasks that share a project and the configured policy:
+
+```sh
+curl -s -X POST https://mise.example/api/plans \
+  -H "Authorization: Bearer $MISE_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"tasks":["MI-1","MI-2","MI-3"],
+       "edges":[{"from":"MI-1","to":"MI-3"},{"from":"MI-2","to":"MI-3"}]}'
+```
+
+`kind` defaults to `integration`. The approval rejects a cycle, a duplicated edge, a task of another project
+and a task that already belongs to a plan. Nodes with no incoming edge move to `ready` in the same
+transaction; every other node waits in `backlog` until all its prerequisites have a verified merge, then
+moves to `ready` exactly once. The reconciler walks nodes, not plans, so one stuck branch does not stop the
+others.
+
+`GET /api/plans/{id}` returns each node with its state, its acceptance criteria, its proof when verified and
+`waiting_on`: the prerequisites still missing. A prerequisite that is `blocked` shows up there with its
+state, which is how a stuck branch is visible next to the branches that continue. `POST /api/plans/{id}/cancel`
+stops the plan: nothing else is released, the nodes already waiting stay in `backlog` and the record is kept.
+
+`kind: "deployment"` is reserved in the schema and refused by the API until deployment observation exists;
+today only `integration` can be approved. The old pair routes (`/api/dependency-plans`) stay for the plans
+approved before graphs existed.
+
 ## Required checks and submissions
 
 A human sets the checks every delivery of a project must pass:
