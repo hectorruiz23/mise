@@ -2,7 +2,7 @@
 """End-to-end smoke test for the Mise MCP server against a throwaway local API.
 
 Speaks JSON-RPC over stdio to mise_mcp.py, the way a client would, and checks the contract:
-handshake, ten tools, the board loads, one card resolves, and a real delivery with structured
+handshake, twelve tools, the board loads, one card resolves, and a real delivery with structured
 evidence reaches the API. It builds and starts its own instance under a temporary database, so
 it never touches the owner's board.
 
@@ -248,7 +248,7 @@ def run() -> int:
 
         tools = mcp.call("tools/list")["result"]["tools"]
         names = [tool["name"] for tool in tools]
-        check(len(names) == 10, "ten tools listed", f"got {len(names)}: {names}")
+        check(len(names) == 12, "twelve tools listed", f"got {len(names)}: {names}")
         for forbidden in ("approve", "delete_task", "create_project"):
             check(forbidden not in names, f"no {forbidden} tool (the API refuses it for agents)")
         check(all(tool.get("inputSchema", {}).get("type") == "object" for tool in tools),

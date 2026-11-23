@@ -189,6 +189,35 @@ curl -s -X POST https://mise.example/api/projects/MI/environments \
 `GET /api/plans/{id}` shows the revision observed in each environment under `deployments`, and the merge under
 `proof` with `origin: "merge"` when Mise performed it.
 
+## Proposing a plan from a conversation
+
+The conversation happens in the agent the owner already uses; Mise only receives the result and owns the
+approval. An agent with a credential proposes a plan and gets a stable link:
+
+```sh
+curl -s -X POST https://mise.example/api/plan-drafts \
+  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+  -d '{"project":"MI","outcome":"the board shows what was closed",
+       "scenario":"make scenario",
+       "visual_review":true,"visible_change":"the board gains a Done tab","reveal_key":"T3",
+       "tasks":[{"key":"T1","title":"Prepare the query","acceptance":"1. ...","size":"M"},
+                {"key":"T2","title":"Prepare the route","size":"S"},
+                {"key":"T3","title":"Show the tab","size":"M"}],
+       "edges":[{"from":"T1","to":"T3"},{"from":"T2","to":"T3"}]}'
+```
+
+The answer carries `id` and `version`; the link is `/#draft/<id>`, and it never changes. **Nothing exists until
+the owner approves**: no card, no plan, nothing to lease. A change comes with `PUT` and `If-Match: "<version>"`,
+which returns the same proposal at the next version; an approval from a page that shows an older version is
+refused with `412 stale_version`, and the panel asks the owner to review the new one. Approving twice returns
+the same plan instead of creating a second one, and an approved proposal refuses further edits.
+
+Approval creates the cards in `backlog` and the plan in one transaction: only the tasks with no incoming edge
+become `ready`, and the rest wait with their reasons. The scenario, the visible change and the revealing task
+travel into the plan, so execution is governed by the same rules as a plan written by hand.
+
+The MCP server exposes `propose_plan` and `get_plan_draft`, so an agent can propose and iterate without curl.
+
 ## Visual review and the acceptance scenario
 
 A plan that changes what the owner sees names, at approval time, the task whose pull request is the only one

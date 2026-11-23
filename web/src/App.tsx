@@ -4,15 +4,22 @@ import { isViewer, type Me } from './types'
 import { Header } from './components/Header'
 import { Login } from './components/Login'
 import { Panel } from './components/Panel'
+import { PlanDraftPage } from './components/PlanDraft'
 import { Signup } from './components/Signup'
 
 type Screen = 'panel' | 'login' | 'signup'
+
+function draftFromHash(): number | null {
+  const match = /^#draft\/(\d+)/.exec(location.hash)
+  return match ? Number(match[1]) : null
+}
 
 export default function App() {
   const [checking, setChecking] = useState(true)
   const [error, setError] = useState('')
   const [me, setMe] = useState<Me | null>(null)
   const [screen, setScreen] = useState<Screen>('panel')
+  const [draftID, setDraftID] = useState<number | null>(() => draftFromHash())
   const [notice, setNotice] = useState('')
   const attempt = useRef(0)
 
@@ -41,6 +48,12 @@ export default function App() {
   useEffect(() => {
     void loadMe()
   }, [loadMe])
+
+  useEffect(() => {
+    const onHash = () => setDraftID(draftFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const sessionExpired = useCallback(() => {
     setNotice('Your session expired. Sign in again.')
@@ -115,6 +128,26 @@ export default function App() {
   }
 
   const panelKey = isViewer(me) ? 'viewer' : `${me.kind}-${me.id}`
+
+  if (draftID !== null) {
+    return (
+      <>
+        <Header
+          me={me}
+          onSignIn={() => setScreen('login')}
+          onSignOut={() => void signOut()}
+        />
+        <PlanDraftPage
+          key={draftID}
+          me={me}
+          draftID={draftID}
+          onBrowseBoard={() => {
+            location.hash = '#board'
+          }}
+        />
+      </>
+    )
+  }
 
   return (
     <>

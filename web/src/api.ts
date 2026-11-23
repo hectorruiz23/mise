@@ -8,6 +8,7 @@ import type {
   Lease,
   Me,
   Movement,
+  PlanDraft,
   Project,
   SignupStatus,
   State,
@@ -118,6 +119,20 @@ export const api = {
   logout: () => request<void>('/api/sessions/current', { method: 'DELETE' }),
 
   projects: () => request<Project[]>('/api/projects'),
+
+  planDraft: (id: number) => request<PlanDraft>(`/api/plan-drafts/${id}`),
+
+  approvePlanDraft: (id: number, version: number) =>
+    request<PlanDraft>(`/api/plan-drafts/${id}/approve`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${version}"` },
+    }),
+
+  discardPlanDraft: (id: number, version: number) =>
+    request<PlanDraft>(`/api/plan-drafts/${id}/discard`, {
+      method: 'POST',
+      headers: { 'If-Match': `"${version}"` },
+    }),
 
   createProject: (input: { key: string; name: string }) =>
     request<Project>('/api/projects', { method: 'POST', body: JSON.stringify(input) }),
