@@ -369,10 +369,14 @@ func (r *Repo) CreateProject(ctx context.Context, project app.Project, now int64
 			return fmt.Errorf("create project %q: check existence: %w", project.Key, err)
 		}
 
+		enabled := 0
+		if project.AutoMerge {
+			enabled = 1
+		}
 		if _, err := conn.ExecContext(ctx, `
-			INSERT INTO projects (key, name, next_task_number, created_at)
-			VALUES (?, ?, 1, ?)`,
-			project.Key, project.Name, now); err != nil {
+			INSERT INTO projects (key, name, next_task_number, created_at, auto_merge)
+			VALUES (?, ?, 1, ?, ?)`,
+			project.Key, project.Name, now, enabled); err != nil {
 			return fmt.Errorf("create project %q: %w", project.Key, err)
 		}
 		return nil

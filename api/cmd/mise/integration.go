@@ -26,6 +26,7 @@ var protectedPrefixes = []string{".github/workflows/", "api/migrations/"}
 type merger interface {
 	Merge(context.Context, githubinfo.Ref, string) (string, error)
 	PullFiles(context.Context, githubinfo.Ref) ([]string, error)
+	PullTarget(context.Context, githubinfo.Ref) (githubinfo.Target, error)
 }
 
 type integrationWorker struct {
@@ -34,6 +35,7 @@ type integrationWorker struct {
 	clock  app.Clock
 	client *http.Client
 	owned  string
+	target githubinfo.Target
 }
 
 func (w *integrationWorker) run(ctx context.Context, logger *slog.Logger) {
@@ -97,6 +99,24 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 		return nil
 	}
 
+	destination, err := w.github.PullTarget(ctx, ref)
+	if err != nil {
+		return err
+	}
+	if !w.authorized() {
+		return errors.New("auto merge has no authorized repository and base branch")
+	}
+	if reason := destinationMismatch(w.target, destination); reason != "" {
+		return w.store.RecordMergeAttempt(ctx, app.MergeOutcome{
+			DeliveryID: candidate.DeliveryID,
+			TaskKey:    candidate.TaskKey,
+			PRURL:      candidate.PRURL,
+			ActorID:    candidate.ActorID,
+			Outcome:    app.MergeOutcomeRefused,
+			Reason:     reason,
+		}, w.clock.Now())
+	}
+
 	files, err := w.github.PullFiles(ctx, ref)
 	if err != nil {
 		return err
@@ -135,6 +155,20 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 		MergeSHA:   sha,
 		ActorID:    candidate.ActorID,
 	}, w.clock.Now())
+}
+
+func (w *integrationWorker) authorized() bool {
+	return strings.TrimSpace(w.target.Repository) != "" && strings.TrimSpace(w.target.Base) != ""
+}
+
+func destinationMismatch(authorized, destination githubinfo.Target) string {
+	if !strings.EqualFold(destination.Repository, strings.TrimSpace(authorized.Repository)) {
+		return "it targets " + destination.Repository + ", not " + authorized.Repository
+	}
+	if destination.Base != strings.TrimSpace(authorized.Base) {
+		return "it targets branch " + destination.Base + ", not " + authorized.Base
+	}
+	return ""
 }
 
 func protected(files []string) []string {

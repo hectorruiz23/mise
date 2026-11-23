@@ -86,10 +86,11 @@ func (s *Service) snapshotSubmission(
 		PRURL:      *normalized,
 		HeadSHA:    strings.ToLower(headSHA),
 		Required:   required,
-		Verdict:    domain.VerdictPassed,
+		Verdict:    domain.VerdictOpen,
 		DeclaredAt: now,
 	}
 	if len(required) == 0 {
+		submission.Verdict = domain.VerdictPassed
 		return submission, nil
 	}
 	if s.checks == nil {
@@ -104,6 +105,7 @@ func (s *Service) snapshotSubmission(
 	}
 	observed, err := s.checks.Checks(ctx, repository, submission.HeadSHA)
 	if err != nil {
+		submission.Verdict = domain.VerdictOpen
 		return submission, nil
 	}
 	submission.Verdict, submission.Checks = domain.EvaluateChecks(required, observed)

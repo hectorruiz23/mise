@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,6 +15,12 @@ type fakeChecks map[string][]domain.Check
 
 func (f fakeChecks) Checks(_ context.Context, _, revision string) ([]domain.Check, error) {
 	return f[revision], nil
+}
+
+type brokenChecks struct{ err error }
+
+func (b brokenChecks) Checks(context.Context, string, string) ([]domain.Check, error) {
+	return nil, b.err
 }
 
 func green(names ...string) []domain.Check {
@@ -146,6 +153,88 @@ func TestSubmissionGatePasses(t *testing.T) {
 	failures, err := repo.CountFailedAttempts(ctx, task.Key)
 	if err != nil || failures != 0 {
 		t.Fatalf("failed attempts = %d, %v; want 0", failures, err)
+	}
+}
+
+func TestUnavailableCheckProviderCannotAdvanceADelivery(t *testing.T) {
+	ctx := context.Background()
+	database, _ := openMigrated(t)
+	repo := sqlite.New(database)
+	clock := &manualClock{now: testNow}
+	head := strings.Repeat("b", 40)
+	outage := errors.New("CI temporarily unavailable")
+
+	service := app.NewWithChecks(repo, clock, brokenChecks{err: outage})
+	if err := service.UpdateProjectChecks(ctx, human(), "MI", []string{"build"}); err != nil {
+		t.Fatal(err)
+	}
+	task, _ := createTask(t, service, app.CreateParams{Title: "Review check"})
+	if _, err := service.Move(ctx, task.Key, domain.Ready, "", human(), task.Version, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := service.Acquire(ctx, task.Key, agent()); err != nil {
+		t.Fatal(err)
+	}
+
+	prURL := "https://github.com/owner/project/pull/21"
+	label := "check"
+	items := []domain.EvidenceItem{{Label: &label, Raw: "tests run locally"}}
+	if _, _, err := service.DeliverRevision(ctx, task.Key, agent(), nil, "Work done", nil, items, &prURL, &head); err == nil {
+		t.Fatal("an unavailable provider let the delivery through")
+	} else {
+		wantRuleCode(t, err, domain.CodeChecksPending)
+	}
+
+	if state := mustTask(t, service, task.Key).State; state != domain.InProgress {
+		t.Fatalf("state after an unverifiable delivery = %q, want in_progress", state)
+	}
+	if failures, err := repo.CountFailedAttempts(ctx, task.Key); err != nil || failures != 0 {
+		t.Fatalf("failed attempts = %d, %v; want 0", failures, err)
+	}
+	candidates, err := repo.PendingMerges(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("an unavailable provider produced %d merge candidates", len(candidates))
+	}
+	detail, err := service.Detail(ctx, human(), task.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(detail.Deliveries) != 0 {
+		t.Fatalf("deliveries = %d, want 0 for an unverifiable revision", len(detail.Deliveries))
+	}
+	if len(detail.Submissions) != 1 {
+		t.Fatalf("submissions = %d, want 1 kept attempt", len(detail.Submissions))
+	}
+	if verdict := detail.Submissions[0].Verdict; verdict != domain.VerdictOpen {
+		t.Fatalf("kept submission verdict = %q, want open", verdict)
+	}
+	if detail.Submissions[0].CheckedAt != nil {
+		t.Fatalf("an unavailable provider stamped checked_at = %d", *detail.Submissions[0].CheckedAt)
+	}
+
+	recovered := app.NewWithChecks(repo, clock, fakeChecks{head: green("build")})
+	_, delivery, err := recovered.DeliverRevision(ctx, task.Key, agent(), nil, "Work done", nil, items, &prURL, &head)
+	if err != nil {
+		t.Fatalf("recover the same revision once the provider answers: %v", err)
+	}
+	if delivery.HeadSHA == nil || *delivery.HeadSHA != head {
+		t.Fatalf("delivery head_sha = %v, want %s", delivery.HeadSHA, head)
+	}
+	if state := mustTask(t, recovered, task.Key).State; state != domain.Review {
+		t.Fatalf("state after recovery = %q, want review", state)
+	}
+	if failures, err := repo.CountFailedAttempts(ctx, task.Key); err != nil || failures != 0 {
+		t.Fatalf("failed attempts after recovery = %d, %v; want 0", failures, err)
+	}
+	candidates, err = repo.PendingMerges(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("merge candidates after recovery = %d, want 1", len(candidates))
 	}
 }
 
