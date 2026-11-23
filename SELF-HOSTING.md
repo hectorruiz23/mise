@@ -93,25 +93,22 @@ sudo install -o <service-user> -g <service-user> -m 0755 api/build/mise /srv/mis
 | `MISE_GITHUB_VERIFICATION_TOKEN` | Optional fine-grained token with read access to pull requests and Actions for private repositories | empty |
 | `MISE_GITHUB_MERGE_TOKEN` | Fine-grained token with write access to pull requests; enables automatic merge. Unset disables it | empty |
 
-Set all three `MISE_PLAN_*` variables to enable two-task dependency plans. Choose a workflow that runs the
-required checks on each push to the target branch. Protect changes to that workflow and its tests through
-repository review. Mise verifies the workflow's reported conclusion at the merged commit.
+Set all three `MISE_PLAN_*` variables to enable plan verification. Choose a workflow that runs the required
+checks on each push to the target branch. Protect changes to that workflow and its tests through repository
+review. Mise verifies the workflow's reported conclusion at the merged commit.
 
-A human account approves two backlog tasks from the same project by sending
-`{"prerequisite_key":"MI-1","dependent_key":"MI-2"}` to `POST /api/dependency-plans`; an agent token is
-refused with `403` and an unset policy answers `409`. The first task becomes ready. Its agent delivers
-the PR URL and exactly one `evidence_items` entry labeled `head_sha` whose raw value is the full
-40-character PR head commit. Mise verifies the merge and the checks of the pull request named in that
-delivery; binding a task to its pull request independently is a later slice. Mise checks GitHub in the
-background. When the delivered revision has merged into the approved branch and its merge commit has
-passed the approved workflow, the second task becomes ready to lease. The evidence has to sit on the
-latest delivery of the prerequisite, and the prerequisite has to be in `review` or `done` when Mise
-polls. Read the plan at `GET /api/dependency-plans/MI-1`.
+A human account approves a plan with `POST /api/plans`; an agent token is refused with `403` and an unset
+policy answers `409`. Each node that becomes available is worked by an agent like any other card, and its
+delivery names the pull request with exactly one `evidence_items` entry labeled `head_sha` whose raw value is
+the full 40-character commit. When the delivered revision has merged into the approved branch and its merge
+commit passed the approved workflow, the next nodes are released. Read the plan at `GET /api/plans/{id}`.
 
-The owner cancels a waiting plan with `POST /api/dependency-plans/MI-1/cancel`, which records who
-cancelled it and when. The dependent task stays in backlog and can be moved, edited and leased again;
-a verification that arrives afterwards cannot release it, and the cancelled plan stays as the record of
-that pair.
+The owner cancels a plan with `POST /api/plans/{id}/cancel`, which records who cancelled it and when. The
+nodes still waiting stay in `backlog` and can be moved, edited and leased again; a verification that arrives
+afterwards cannot release them, and the cancelled plan stays as the record.
+
+`/api/dependency-plans` — the two-task pair that came before graphs — was retired with its worker. The table
+stays as history and no route reads it.
 
 ## Dispatching agents
 
@@ -157,8 +154,7 @@ state, which is how a stuck branch is visible next to the branches that continue
 stops the plan: nothing else is released, the nodes already waiting stay in `backlog` and the record is kept.
 
 A `deployment` edge needs at least one environment registered in the project, because the dependent node
-waits for the merged revision to be serving. The old pair routes (`/api/dependency-plans`) stay for the plans
-approved before graphs existed.
+waits for the merged revision to be serving.
 
 ## Automatic merge and the deployment gate
 
