@@ -230,3 +230,80 @@ export type PlanDraft = {
   created_at: number
   updated_at: number
 }
+
+export type PlanDraftSummary = {
+  id: number
+  project: string
+  version: number
+  state: 'draft' | 'approved' | 'discarded'
+  plan_id: number | null
+}
+
+export type PlanPolicy = {
+  repository: string
+  branch: string
+  workflow_id: number
+}
+
+export type PlanProof = {
+  task_key: string
+  delivery_id: number
+  pr_url: string
+  head_sha: string
+  merge_sha: string
+  run_id: number
+  attempt: number
+  verified_at: number
+  origin: string
+}
+
+export type PlanDeployment = {
+  environment: string
+  revision: string
+  observed_at: number
+}
+
+export type PlanApproval = {
+  task_key: string
+  head_sha: string
+  reviewer: string
+  approved_at: number
+}
+
+export type PlanEdge = {
+  From: string
+  To: string
+  Kind: 'integration' | 'deployment'
+}
+
+export type PlanNode = {
+  task_key: string
+  title: string
+  state: State
+  acceptance: string | null
+  waiting_on: string[]
+  proof: PlanProof | null
+  deployments: PlanDeployment[]
+  reveals: boolean
+  correction: boolean
+  origin_evidence: string | null
+}
+
+export type PlanGraph = {
+  id: number
+  project: string
+  policy: PlanPolicy
+  scenario: string
+  visible_change: string | null
+  visual_review: boolean
+  target_environment?: string
+  approved_by: number
+  approved_at: number
+  completed_at: number | null
+  state: 'active' | 'completed' | 'cancelled'
+  cancelled_by?: number
+  cancelled_at?: number
+  approval: PlanApproval | null
+  nodes: PlanNode[]
+  edges: PlanEdge[]
+}

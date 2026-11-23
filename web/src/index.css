@@ -17,6 +17,10 @@ html { overflow-y: auto; scrollbar-gutter: stable; }
 .nombre-espacio { color: var(--muted-dark); font-size: 14px; }
 .cabecera .enlace-oscuro { margin-left: auto; }
 .sesion { font-size: 14px; }
+.navegacion-cabecera { display: flex; align-items: center; align-self: stretch; }
+.navegacion-cabecera a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-2); border-bottom: 3px solid var(--color-clear); color: var(--muted-dark); font-size: 14px; font-weight: 700; text-decoration: none; }
+.navegacion-cabecera a:hover { color: var(--text); }
+.navegacion-cabecera a[aria-current="page"] { border-bottom-color: var(--accent-detail); color: var(--text); }
 .enlace-oscuro { min-height: 44px; padding: var(--space-2); background: var(--color-clear); border: 0; color: var(--text); font-size: 14px; }
 .principal { padding-block: var(--space-6) var(--space-8); }
 .titulo-tablero { display: grid; grid-template-columns: 11rem max-content minmax(0, 1fr) auto; grid-template-areas: "titulo pestanas total acciones"; align-items: center; gap: var(--space-2) var(--space-4); }
@@ -498,10 +502,32 @@ h4 { font-size: 14px; }
   background: var(--panel);
   color: var(--text);
 }
+.lista-planes { display: grid; gap: var(--space-2); }
+.fila-plan {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--space-1) var(--space-3);
+  min-height: 44px;
+  padding: var(--space-3);
+  border: 1px solid var(--rule-light);
+  background: var(--card);
+  color: var(--ink);
+  text-decoration: none;
+}
+.fila-plan:hover { background: var(--paper-soft); }
+.fila-plan-titulo { font-weight: 700; }
+.fila-plan-estado { justify-self: end; font: var(--type-data); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent-detail); }
+.fila-plan .dato { grid-column: 1 / -1; color: var(--muted-light); }
+.plan-tarea-estado { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; }
+.estado-tarea { display: inline-block; padding: 1px var(--space-2); border: 1px solid var(--muted-light); font: var(--type-data); letter-spacing: 0.06em; text-transform: uppercase; }
+.estado-tarea.estado-done { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.estado-tarea.estado-blocked { border-color: var(--accent-detail); color: var(--accent-detail); }
+.estado-tarea.estado-review { border-color: var(--ink); }
 
 @media (max-width: 767px) {
   .propuesta-cuerpo { gap: var(--space-4); padding: var(--space-4); }
   .propuesta-resultado { font-size: 18px; }
   .propuesta-pie { display: block; }
   .propuesta-pie p { margin-bottom: var(--space-3); }
+  .propuesta-pie a { display: inline-block; min-height: 44px; margin-right: var(--space-3); }
 }

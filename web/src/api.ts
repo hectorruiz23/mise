@@ -9,6 +9,8 @@ import type {
   Me,
   Movement,
   PlanDraft,
+  PlanDraftSummary,
+  PlanGraph,
   Project,
   SignupStatus,
   State,
@@ -120,7 +122,17 @@ export const api = {
 
   projects: () => request<Project[]>('/api/projects'),
 
+  planDrafts: (project = '') =>
+    request<PlanDraftSummary[]>(
+      `/api/plan-drafts${project ? `?project=${encodeURIComponent(project)}` : ''}`,
+    ),
+
   planDraft: (id: number) => request<PlanDraft>(`/api/plan-drafts/${id}`),
+
+  plans: (project = '') =>
+    request<PlanGraph[]>(`/api/plans${project ? `?project=${encodeURIComponent(project)}` : ''}`),
+
+  plan: (id: number) => request<PlanGraph>(`/api/plans/${id}`),
 
   approvePlanDraft: (id: number, version: number) =>
     request<PlanDraft>(`/api/plan-drafts/${id}/approve`, {
