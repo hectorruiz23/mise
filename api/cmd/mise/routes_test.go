@@ -49,8 +49,8 @@ func newRouteServer(t *testing.T) *httpserver.Server {
 	}
 
 	registerRoutes(server, taskshttp.New(tasksService), usershttp.New(usersService, "https://mise.example"),
-		taskshttp.NewDependencyPlans(tasksRepo, tasksapp.PlanPolicy{}, routeClock{}),
-		taskshttp.NewGraphs(tasksRepo, tasksapp.PlanPolicy{}, routeClock{}))
+		taskshttp.NewGraphs(tasksRepo, tasksapp.PlanPolicy{}, routeClock{}),
+		taskshttp.NewDrafts(tasksRepo, tasksapp.PlanPolicy{}, routeClock{}))
 	return server
 }
 
@@ -127,9 +127,13 @@ func TestMutationsStillRequireACredential(t *testing.T) {
 		{http.MethodGet, "/api/plans"},
 		{http.MethodGet, "/api/plans/1"},
 		{http.MethodPost, "/api/plans/1/cancel"},
-		{http.MethodPost, "/api/dependency-plans"},
-		{http.MethodGet, "/api/dependency-plans/NOPE-1"},
-		{http.MethodPost, "/api/dependency-plans/NOPE-1/cancel"},
+		{http.MethodPost, "/api/plans/1/scenario"},
+		{http.MethodPost, "/api/projects/NOPE-1/environments"},
+		{http.MethodPost, "/api/plan-drafts"},
+		{http.MethodGet, "/api/plan-drafts/1"},
+		{http.MethodPut, "/api/plan-drafts/1"},
+		{http.MethodPost, "/api/plan-drafts/1/approve"},
+		{http.MethodPatch, "/api/projects/NOPE-1"},
 		{http.MethodDelete, "/api/sessions/current"},
 	}
 

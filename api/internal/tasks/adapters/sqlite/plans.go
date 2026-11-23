@@ -55,7 +55,6 @@ func (r *Repo) ApproveGraph(
 	} else if strings.TrimSpace(review.RevealTask) != "" {
 		return app.PlanGraph{}, invalidInput("only a plan with visual review names a revealing task")
 	}
-	target := strings.TrimSpace(review.TargetEnvironment)
 	var planID int64
 	err := r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
 		projects := make(map[string]struct{}, 1)
@@ -75,10 +74,7 @@ func (r *Repo) ApproveGraph(
 			projects[project] = struct{}{}
 			var taken bool
 			if err := conn.QueryRowContext(ctx, `SELECT EXISTS(
-				SELECT 1 FROM plan_nodes WHERE task_key = ?
-				UNION ALL
-				SELECT 1 FROM dependency_plans WHERE first_task = ? OR next_task = ?)`,
-				key, key, key).Scan(&taken); err != nil {
+				SELECT 1 FROM plan_nodes WHERE task_key = ?)`, key).Scan(&taken); err != nil {
 				return err
 			}
 			if taken {
@@ -92,53 +88,11 @@ func (r *Repo) ApproveGraph(
 		for key := range projects {
 			project = key
 		}
-		if err := requireEnvironments(ctx, conn, project, edges); err != nil {
-			return err
-		}
-		if target != "" {
-			var exists bool
-			if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM environments
-				WHERE project_key = ? AND name = ?)`, project, target).Scan(&exists); err != nil {
-				return err
-			}
-			if !exists {
-				return invalidInput("the target environment must be registered in the project")
-			}
-		}
-		err := conn.QueryRowContext(ctx, `INSERT INTO plans
-			(project_key, repository, branch, workflow_id, approved_by, approved_at, state,
-			 scenario, visible_change, visual_review, target_environment)
-			VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?) RETURNING id`,
-			project, policy.Repository, policy.Branch, policy.WorkflowID, actor.ID, now,
-			strings.TrimSpace(review.Scenario), nullableText(review.VisibleChange),
-			boolFlag(review.VisualReview), target).Scan(&planID)
+		activated, err := r.activatePlan(ctx, conn, actor.ID, project, tasks, edges, policy, review, now)
 		if err != nil {
 			return err
 		}
-		for _, key := range tasks {
-			reveals := review.VisualReview && key == review.RevealTask
-			if _, err := conn.ExecContext(ctx,
-				`INSERT INTO plan_nodes (plan_id, task_key, reveals) VALUES (?, ?, ?)`,
-				planID, key, boolFlag(reveals)); err != nil {
-				return err
-			}
-		}
-		for _, edge := range edges {
-			if _, err := conn.ExecContext(ctx,
-				`INSERT INTO plan_edges (plan_id, from_task, to_task, kind) VALUES (?, ?, ?, ?)`,
-				planID, edge.From, edge.To, edge.Kind); err != nil {
-				return err
-			}
-		}
-		proofs := make(map[string]struct{})
-		for _, node := range tasks {
-			if len(domain.Unsatisfied(edges, proofs, map[string]struct{}{}, node)) > 0 {
-				continue
-			}
-			if err := readyPlanTask(ctx, conn, node, actor.ID, now, "Plan dependencies satisfied"); err != nil {
-				return err
-			}
-		}
+		planID = activated
 		return nil
 	})
 	if err != nil {

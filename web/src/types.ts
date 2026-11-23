@@ -192,3 +192,40 @@ export type TaskPatch = {
 }
 
 export type SignupStatus = 'pending' | 'approved' | 'consumed'
+
+export type DraftTask = {
+  key: string
+  title: string
+  notes: string | null
+  acceptance: string | null
+  size: Size | null
+  task_key: string | null
+}
+
+export type DraftEdge = {
+  from: string
+  to: string
+  kind: 'integration' | 'deployment'
+}
+
+export type PlanDraft = {
+  id: number
+  project: string
+  author_id: number
+  policy: { repository: string; branch: string; workflow_id: number }
+  outcome: string
+  scenario: string
+  visible_change: string | null
+  visual_review: boolean
+  reveal_key: string | null
+  version: number
+  state: 'draft' | 'approved' | 'discarded'
+  approved_by: number | null
+  approved_at: number | null
+  plan_id: number | null
+  tasks: DraftTask[]
+  edges: DraftEdge[]
+  roots: string[]
+  created_at: number
+  updated_at: number
+}

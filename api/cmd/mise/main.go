@@ -102,9 +102,9 @@ func run() error {
 
 	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{}))
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
-	plans := taskshttp.NewDependencyPlans(tasksRepo, cfg.planPolicy, clock)
 	graphs := taskshttp.NewGraphs(tasksRepo, cfg.planPolicy, clock)
-	registerRoutes(server, tasksHandler, usersHandler, plans, graphs)
+	drafts := taskshttp.NewDrafts(tasksRepo, cfg.planPolicy, clock)
+	registerRoutes(server, tasksHandler, usersHandler, graphs, drafts)
 	server.SetFallback(panel.Handler())
 
 	listener, err := net.Listen("tcp", cfg.addr)
@@ -119,16 +119,12 @@ func run() error {
 	}
 	if cfg.planPolicy.WorkflowID != 0 {
 		ctx, stop := context.WithCancel(context.Background())
-		done := make(chan struct{}, 2)
+		done := make(chan struct{}, 1)
 		graph := &graphWorker{store: tasksRepo, policy: cfg.planPolicy, clock: clock, github: githubinfo.New(githubinfo.Options{
 			Repository: cfg.planPolicy.Repository, VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
 		})}
 		go func() { defer func() { done <- struct{}{} }(); graph.run(ctx, logger) }()
-		worker := &planWorker{plans: tasksRepo, policy: cfg.planPolicy, clock: clock, github: githubinfo.New(githubinfo.Options{
-			Repository: cfg.planPolicy.Repository, VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
-		})}
-		go func() { defer func() { done <- struct{}{} }(); worker.run(ctx, logger) }()
-		defer func() { stop(); <-done; <-done }()
+		defer func() { stop(); <-done }()
 	}
 	integration := &integrationWorker{
 		store:  tasksRepo,
@@ -179,7 +175,7 @@ func run() error {
 	}
 }
 
-func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler, plans *taskshttp.DependencyPlans, graphs *taskshttp.Graphs) {
+func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler, graphs *taskshttp.Graphs, drafts *taskshttp.Drafts) {
 	server.HandleReadFunc("GET /api/build", buildinfo.Handler())
 	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
@@ -204,14 +200,16 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleReadFunc("GET /api/tasks/{key}/anchors", tasksHandler.Anchors)
 	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
 	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
-	server.HandleFunc("POST /api/dependency-plans", false, plans.Approve)
-	server.HandleFunc("GET /api/dependency-plans/{firstTask}", false, plans.Get)
-	server.HandleFunc("POST /api/dependency-plans/{firstTask}/cancel", false, plans.Cancel)
 	server.HandleFunc("POST /api/plans", false, graphs.Approve)
 	server.HandleFunc("GET /api/plans", false, graphs.List)
 	server.HandleFunc("GET /api/plans/{id}", false, graphs.Get)
 	server.HandleFunc("POST /api/plans/{id}/cancel", false, graphs.Cancel)
 	server.HandleFunc("POST /api/plans/{id}/scenario", false, graphs.ReportScenario)
+	server.HandleFunc("POST /api/plan-drafts", false, drafts.CreateDraft)
+	server.HandleFunc("GET /api/plan-drafts/{id}", false, drafts.Draft)
+	server.HandleFunc("PUT /api/plan-drafts/{id}", false, drafts.UpdateDraft)
+	server.HandleFunc("POST /api/plan-drafts/{id}/approve", false, drafts.ApproveDraft)
+	server.HandleFunc("POST /api/plan-drafts/{id}/discard", false, drafts.DiscardDraft)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
 	server.HandleFunc("DELETE /api/sessions/current", false, usersHandler.Logout)
 	server.HandleFunc("POST /api/signup-requests", true, usersHandler.RequestSignup)

@@ -6,6 +6,12 @@ import (
 	"mise/api/internal/tasks/domain"
 )
 
+type PlanPolicy struct {
+	Repository string `json:"repository"`
+	Branch     string `json:"branch"`
+	WorkflowID int64  `json:"workflow_id"`
+}
+
 const (
 	ScenarioPassed = "passed"
 	ScenarioFailed = "failed"

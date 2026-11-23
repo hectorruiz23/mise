@@ -122,6 +122,8 @@ file exists.
 | `release_lease` | Give the card back without delivering | yes |
 | `deliver` | Summary + evidence, optional `pr_url`, moves the card to review | yes |
 | `comment` | Add a comment | yes |
+| `propose_plan` | Propose a plan for a project without creating work; returns the link to approve it | yes — nothing exists until the owner approves |
+| `get_plan_draft` | Read a proposal: version, state, tasks, edges, which tasks can start together | yes |
 
 Every write answers with a stable envelope — `{"task": …}`, `{"lease": …}`, `{"delivery": …}`,
 `{"comment": …}` — because the raw API is not consistent: `POST`/`PATCH` return the bare task while
@@ -161,7 +163,7 @@ python3 mcp/smoke.py     # leads with PASS/FAIL; builds and drives its own throw
 The smoke needs `go` on `PATH`, or `MISE_SMOKE_BINARY` pointing at an already compiled binary.
 It provisions a human and an agent on the local instance, walks a card from backlog to a real
 delivery with `evidence_items`, and checks both evidence representations in the delivery
-response, the task detail, the listing and the database, plus the tool schemas (ten tools,
+response, the task detail, the listing and the database, plus the tool schemas (twelve tools,
 no approve/delete, `deliver` advertises both representations).
 
 The full write cycle against the real Pi was run once by hand and is not kept in the repo on
@@ -176,7 +178,7 @@ printf '%s\n' \
   | MISE_URL=http://127.0.0.1:8787 MISE_TOKEN=$(cat ~/.config/mise/agent-token) python3 mise_mcp.py
 ```
 
-Expected: an `initialize` result naming the server `mise`, then ten tool definitions. Anything
+Expected: an `initialize` result naming the server `mise`, then twelve tool definitions. Anything
 writing to stdout that is not a JSON-RPC frame breaks the client — debug lines go to stderr.
 
 ## Not done yet
