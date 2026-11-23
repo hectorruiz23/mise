@@ -5,6 +5,7 @@ import (
 
 	"mise/api/internal/kernel"
 	"mise/api/internal/platform/httpserver"
+	"mise/api/internal/tasks/app"
 	"mise/api/internal/tasks/domain"
 )
 
@@ -15,41 +16,29 @@ func (h *Handler) PatchProject(w http.ResponseWriter, r *http.Request) {
 	}
 	if principal.Kind != string(domain.Human) {
 		httpserver.WriteError(w, http.StatusForbidden, kernel.CodeForbidden,
-			"only a human may set the required checks")
+			"only a human may change a project")
 		return
 	}
 	var body struct {
 		RequiredChecks *[]string `json:"required_checks"`
 		AutoDispatch   *bool     `json:"auto_dispatch"`
 		DispatchLimit  *int      `json:"dispatch_limit"`
+		AutoMerge      *bool     `json:"auto_merge"`
 	}
 	if err := decodeStrict(r, &body); err != nil {
 		httpserver.WriteError(w, http.StatusBadRequest, kernel.CodeInvalidInput, "invalid JSON body")
 		return
 	}
-	if body.RequiredChecks == nil {
-		httpserver.WriteError(w, http.StatusBadRequest, kernel.CodeInvalidInput,
-			"required_checks is required")
-		return
-	}
-	if err := h.service.UpdateProjectChecks(r.Context(), actorOf(principal), r.PathValue("key"),
-		*body.RequiredChecks); err != nil {
+	err := h.service.UpdateProjectSettings(r.Context(), actorOf(principal), r.PathValue("key"),
+		app.ProjectSettings{
+			RequiredChecks: body.RequiredChecks,
+			AutoDispatch:   body.AutoDispatch,
+			DispatchLimit:  body.DispatchLimit,
+			AutoMerge:      body.AutoMerge,
+		})
+	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
-	}
-	if body.AutoDispatch != nil || body.DispatchLimit != nil {
-		enabled, limit := false, 3
-		if body.AutoDispatch != nil {
-			enabled = *body.AutoDispatch
-		}
-		if body.DispatchLimit != nil {
-			limit = *body.DispatchLimit
-		}
-		if err := h.service.UpdateProjectDispatch(r.Context(), actorOf(principal), r.PathValue("key"),
-			enabled, limit); err != nil {
-			httpserver.WriteRuleError(w, err)
-			return
-		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -47,6 +47,9 @@ type Repo interface {
 
 	ProjectChecks(ctx context.Context, projectKey string) ([]string, error)
 	SetProjectChecks(ctx context.Context, projectKey string, checks []string, now int64) error
+	ListEnvironments(ctx context.Context, projectKey string) ([]Environment, error)
+	AddEnvironment(ctx context.Context, projectKey string, environment Environment) error
+	SetProjectAutoMerge(ctx context.Context, projectKey string, autoMerge bool) error
 	UpsertSubmission(ctx context.Context, s domain.Submission) (domain.Submission, error)
 	MarkSubmissionDelivered(ctx context.Context, id int64, now int64) error
 	CountFailedAttempts(ctx context.Context, taskKey string) (int, error)
@@ -123,6 +126,7 @@ type Project struct {
 	RequiredChecks []string
 	AutoDispatch   bool
 	DispatchLimit  int
+	AutoMerge      bool
 	State          string
 	Cards          Cards
 	LastActive     *int64

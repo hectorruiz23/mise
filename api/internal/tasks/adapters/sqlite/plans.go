@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"mise/api/internal/tasks/app"
@@ -29,11 +30,6 @@ func (r *Repo) ApproveGraph(
 	}
 	if err := domain.ValidatePlanEdges(tasks, edges); err != nil {
 		return app.PlanGraph{}, err
-	}
-	for _, edge := range edges {
-		if edge.Kind == domain.EdgeDeployment {
-			return app.PlanGraph{}, invalidInput("deployment edges are not accepted yet")
-		}
 	}
 	var planID int64
 	err := r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
@@ -71,6 +67,9 @@ func (r *Repo) ApproveGraph(
 		for key := range projects {
 			project = key
 		}
+		if err := requireEnvironments(ctx, conn, project, edges); err != nil {
+			return err
+		}
 		err := conn.QueryRowContext(ctx, `INSERT INTO plans
 			(project_key, repository, branch, workflow_id, approved_by, approved_at, state)
 			VALUES (?, ?, ?, ?, ?, ?, 'active') RETURNING id`,
@@ -93,7 +92,7 @@ func (r *Repo) ApproveGraph(
 		}
 		proofs := make(map[string]struct{})
 		for _, node := range tasks {
-			if len(domain.Unsatisfied(edges, proofs, node)) > 0 {
+			if len(domain.Unsatisfied(edges, proofs, map[string]struct{}{}, node)) > 0 {
 				continue
 			}
 			if err := readyPlanTask(ctx, conn, node, actor.ID, now, "Plan dependencies satisfied"); err != nil {
@@ -145,6 +144,14 @@ func (r *Repo) readGraph(ctx context.Context, q planQuerier, id int64) (app.Plan
 	for key := range proofs {
 		released[key] = struct{}{}
 	}
+	var project string
+	if err := q.QueryRowContext(ctx, `SELECT project_key FROM plans WHERE id = ?`, id).Scan(&project); err != nil {
+		return plan, err
+	}
+	observed, deployed, err := r.planDeploymentState(ctx, q, id, project, proofs)
+	if err != nil {
+		return plan, err
+	}
 
 	rows, err := q.QueryContext(ctx, `SELECT n.task_key, t.title, t.state, t.acceptance
 		FROM plan_nodes n JOIN tasks t ON t.key = n.task_key
@@ -167,8 +174,18 @@ func (r *Repo) readGraph(ctx context.Context, q planQuerier, id int64) (app.Plan
 		if proof, ok := proofs[node.Key]; ok {
 			node.Proof = &proof
 		}
+		node.Deployments = make([]app.PlanDeployment, 0, len(observed[node.Key]))
+		for environment, revision := range observed[node.Key] {
+			node.Deployments = append(node.Deployments, app.PlanDeployment{
+				Environment: environment,
+				Revision:    revision,
+			})
+		}
+		slices.SortFunc(node.Deployments, func(a, b app.PlanDeployment) int {
+			return strings.Compare(a.Environment, b.Environment)
+		})
 		if node.State == string(domain.Backlog) {
-			node.WaitingOn = domain.Unsatisfied(edges, released, node.Key)
+			node.WaitingOn = domain.Unsatisfied(edges, released, deployed, node.Key)
 		} else {
 			node.WaitingOn = []string{}
 		}
@@ -201,7 +218,7 @@ func (r *Repo) graphEdges(ctx context.Context, q planQuerier, id int64) ([]domai
 
 func (r *Repo) graphProofs(ctx context.Context, q planQuerier, id int64) (map[string]app.PlanProof, error) {
 	rows, err := q.QueryContext(ctx, `SELECT task_key, delivery_id, pr_url, head_sha, merge_sha,
-		run_id, attempt, verified_at FROM plan_proofs WHERE plan_id = ? ORDER BY task_key`, id)
+		run_id, attempt, verified_at, origin FROM plan_proofs WHERE plan_id = ? ORDER BY task_key`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +227,7 @@ func (r *Repo) graphProofs(ctx context.Context, q planQuerier, id int64) (map[st
 	for rows.Next() {
 		var proof app.PlanProof
 		if err := rows.Scan(&proof.TaskKey, &proof.DeliveryID, &proof.PRURL, &proof.HeadSHA,
-			&proof.MergeSHA, &proof.RunID, &proof.Attempt, &proof.VerifiedAt); err != nil {
+			&proof.MergeSHA, &proof.RunID, &proof.Attempt, &proof.VerifiedAt, &proof.Origin); err != nil {
 			return nil, err
 		}
 		proofs[proof.TaskKey] = proof
@@ -395,54 +412,7 @@ func (r *Repo) ReleaseGraphTask(
 			proof.RunID, proof.Attempt, now); err != nil {
 			return err
 		}
-		edges, err := r.graphEdges(ctx, conn, planID)
-		if err != nil {
-			return err
-		}
-		proofs, err := r.graphProofs(ctx, conn, planID)
-		if err != nil {
-			return err
-		}
-		released := make(map[string]struct{}, len(proofs))
-		for key := range proofs {
-			released[key] = struct{}{}
-		}
-		var planApprovedBy int64
-		if err := conn.QueryRowContext(ctx, `SELECT approved_by FROM plans WHERE id = ?`,
-			planID).Scan(&planApprovedBy); err != nil {
-			return err
-		}
-		rows, err := conn.QueryContext(ctx, `SELECT n.task_key FROM plan_nodes n
-			JOIN tasks t ON t.key = n.task_key
-			WHERE n.plan_id = ? AND t.state = 'backlog' ORDER BY n.task_key`, planID)
-		if err != nil {
-			return err
-		}
-		waiting := make([]string, 0)
-		for rows.Next() {
-			var key string
-			if err := rows.Scan(&key); err != nil {
-				rows.Close()
-				return err
-			}
-			waiting = append(waiting, key)
-		}
-		if err := rows.Close(); err != nil {
-			return err
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		for _, key := range waiting {
-			if len(domain.Unsatisfied(edges, released, key)) > 0 {
-				continue
-			}
-			if err := readyPlanTask(ctx, conn, key, planApprovedBy, now,
-				"Plan dependencies satisfied"); err != nil {
-				return err
-			}
-		}
-		return nil
+		return r.settlePlan(ctx, conn, planID, now)
 	})
 	if err != nil {
 		return app.PlanGraph{}, err

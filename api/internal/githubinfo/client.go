@@ -1,6 +1,7 @@
 package githubinfo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -37,6 +38,7 @@ type Clock interface {
 
 type Options struct {
 	VerificationToken string
+	MergeToken        string
 	BaseURL           string
 	Repository        string
 	HTTPClient        *http.Client
@@ -49,6 +51,7 @@ type Options struct {
 
 type Client struct {
 	verificationToken string
+	mergeToken        string
 	baseURL           string
 	repository        string
 	httpClient        *http.Client
@@ -136,6 +139,7 @@ func New(options Options) *Client {
 
 	return &Client{
 		verificationToken: options.VerificationToken,
+		mergeToken:        options.MergeToken,
 		baseURL:           baseURL,
 		repository:        repository,
 		httpClient:        httpClient,
@@ -157,13 +161,26 @@ func (c *Client) get(ctx context.Context, path string, destination any) error {
 }
 
 func (c *Client) getWithToken(ctx context.Context, path string, destination any, token string) error {
-	if err := c.reserve(); err != nil {
+	response, err := c.send(ctx, http.MethodGet, path, token, nil)
+	if err != nil {
 		return err
 	}
+	defer response.Body.Close()
+	return decodeInto(response, destination)
+}
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+func (c *Client) send(ctx context.Context, method, path, token string, body []byte) (*http.Response, error) {
+	if err := c.reserve(); err != nil {
+		return nil, err
+	}
+
+	var payload io.Reader
+	if body != nil {
+		payload = bytes.NewReader(body)
+	}
+	request, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, payload)
 	if err != nil {
-		return &fetchError{reason: ReasonUpstreamError}
+		return nil, &fetchError{reason: ReasonUpstreamError}
 	}
 	if token != "" {
 		request.Header.Set("Authorization", "Bearer "+token)
@@ -171,20 +188,27 @@ func (c *Client) getWithToken(ctx context.Context, path string, destination any,
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	request.Header.Set("User-Agent", "mise")
+	if body != nil {
+		request.Header.Set("Content-Type", "application/json")
+	}
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
 		if ctx.Err() != nil || isTimeout(err) {
-			return &fetchError{reason: ReasonTimeout}
+			return nil, &fetchError{reason: ReasonTimeout}
 		}
-		return &fetchError{reason: ReasonUpstreamError}
+		return nil, &fetchError{reason: ReasonUpstreamError}
 	}
-	defer response.Body.Close()
 
 	if retry, limited := rateLimit(response, c.clock.Now()); limited {
+		response.Body.Close()
 		c.block(retry)
-		return &fetchError{reason: ReasonRateLimited, retryAt: &retry}
+		return nil, &fetchError{reason: ReasonRateLimited, retryAt: &retry}
 	}
+	return response, nil
+}
+
+func decodeInto(response *http.Response, destination any) error {
 	switch {
 	case response.StatusCode == http.StatusNotFound:
 		return &fetchError{reason: ReasonNotFound}

@@ -84,16 +84,22 @@ func ValidatePlanEdges(tasks []string, edges []PlanEdge) error {
 	return nil
 }
 
-func Unsatisfied(edges []PlanEdge, proofs map[string]struct{}, task string) []string {
+func Unsatisfied(edges []PlanEdge, released, deployed map[string]struct{}, task string) []string {
 	waiting := make([]string, 0)
 	for _, edge := range edges {
 		if edge.To != task {
 			continue
 		}
-		if _, ok := proofs[edge.From]; ok {
+		if _, ok := released[edge.From]; !ok {
+			waiting = append(waiting, edge.From)
 			continue
 		}
-		waiting = append(waiting, edge.From)
+		if edge.Kind != EdgeDeployment {
+			continue
+		}
+		if _, ok := deployed[edge.From]; !ok {
+			waiting = append(waiting, edge.From)
+		}
 	}
 	slices.Sort(waiting)
 	return waiting

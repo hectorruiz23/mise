@@ -701,6 +701,18 @@ func (r *fakeRepo) SetProjectChecks(_ context.Context, _ string, _ []string, _ i
 	return nil
 }
 
+func (r *fakeRepo) ListEnvironments(_ context.Context, _ string) ([]app.Environment, error) {
+	return nil, nil
+}
+
+func (r *fakeRepo) AddEnvironment(_ context.Context, _ string, _ app.Environment) error {
+	return nil
+}
+
+func (r *fakeRepo) SetProjectAutoMerge(_ context.Context, _ string, _ bool) error {
+	return nil
+}
+
 func (r *fakeRepo) UpsertSubmission(_ context.Context, s domain.Submission) (domain.Submission, error) {
 	return s, nil
 }

@@ -245,6 +245,21 @@ func (r untouchedRepo) SetProjectChecks(_ context.Context, _ string, _ []string,
 	return nil
 }
 
+func (r untouchedRepo) ListEnvironments(_ context.Context, _ string) ([]app.Environment, error) {
+	r.touch("ListEnvironments")
+	return nil, nil
+}
+
+func (r untouchedRepo) AddEnvironment(_ context.Context, _ string, _ app.Environment) error {
+	r.touch("AddEnvironment")
+	return nil
+}
+
+func (r untouchedRepo) SetProjectAutoMerge(_ context.Context, _ string, _ bool) error {
+	r.touch("SetProjectAutoMerge")
+	return nil
+}
+
 func (r untouchedRepo) UpsertSubmission(_ context.Context, s domain.Submission) (domain.Submission, error) {
 	r.touch("UpsertSubmission")
 	return s, nil

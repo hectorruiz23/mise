@@ -130,6 +130,28 @@ func run() error {
 		go func() { defer func() { done <- struct{}{} }(); worker.run(ctx, logger) }()
 		defer func() { stop(); <-done; <-done }()
 	}
+	integration := &integrationWorker{
+		store:  tasksRepo,
+		clock:  clock,
+		client: &http.Client{Timeout: environmentTimeout},
+		owned:  githubinfo.DefaultRepository,
+	}
+	if token := os.Getenv("MISE_GITHUB_MERGE_TOKEN"); token != "" {
+		integration.github = githubinfo.New(githubinfo.Options{
+			MergeToken: token, VerificationToken: token, Repository: githubinfo.DefaultRepository,
+		})
+		logger.Info("auto merge enabled", "owned_repository", integration.owned)
+	} else {
+		logger.Info("auto merge disabled", "reason", "MISE_GITHUB_MERGE_TOKEN is not set")
+	}
+	workerCtx, workerStop := context.WithCancel(context.Background())
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		integration.run(workerCtx, logger)
+	}()
+	defer func() { workerStop(); <-workerDone }()
+
 	serveErr := make(chan error, 1)
 	go func() {
 		serveErr <- httpServer.Serve(listener)
@@ -164,6 +186,8 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)
 	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
 	server.HandleFunc("PATCH /api/projects/{key}", false, tasksHandler.PatchProject)
+	server.HandleFunc("GET /api/projects/{key}/environments", false, tasksHandler.Environments)
+	server.HandleFunc("POST /api/projects/{key}/environments", false, tasksHandler.AddEnvironment)
 	server.HandleReadFunc("GET /api/board", tasksHandler.Board)
 	server.HandleReadFunc("GET /api/tasks", tasksHandler.List)
 	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)

@@ -91,6 +91,7 @@ sudo install -o <service-user> -g <service-user> -m 0755 api/build/mise /srv/mis
 | `MISE_PLAN_BRANCH` | Target branch for the prerequisite pull request | empty |
 | `MISE_PLAN_WORKFLOW_ID` | Numeric GitHub Actions workflow ID that checks pushes to the target branch | empty |
 | `MISE_GITHUB_VERIFICATION_TOKEN` | Optional fine-grained token with read access to pull requests and Actions for private repositories | empty |
+| `MISE_GITHUB_MERGE_TOKEN` | Fine-grained token with write access to pull requests; enables automatic merge. Unset disables it | empty |
 
 Set all three `MISE_PLAN_*` variables to enable two-task dependency plans. Choose a workflow that runs the
 required checks on each push to the target branch. Protect changes to that workflow and its tests through
@@ -153,9 +154,42 @@ others.
 state, which is how a stuck branch is visible next to the branches that continue. `POST /api/plans/{id}/cancel`
 stops the plan: nothing else is released, the nodes already waiting stay in `backlog` and the record is kept.
 
-`kind: "deployment"` is reserved in the schema and refused by the API until deployment observation exists;
-today only `integration` can be approved. The old pair routes (`/api/dependency-plans`) stay for the plans
+A `deployment` edge needs at least one environment registered in the project, because the dependent node
+waits for the merged revision to be serving. The old pair routes (`/api/dependency-plans`) stay for the plans
 approved before graphs existed.
+
+## Automatic merge and the deployment gate
+
+A project merges its own green pull requests unless it is told not to:
+
+```sh
+curl -s -X PATCH https://mise.example/api/projects/MI \
+  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+  -d '{"auto_merge":false}'
+```
+
+The switch is on by default. Mise only considers a card that reached `review` through an agent lease, in a
+project with required checks, whose latest delivery names a GitHub pull request and whose revision passed
+them. It merges with a squash, so the merge commit is the one the target branch gains, and records that merge
+as the integration proof of the card. Two pull requests are never merged automatically: one that changes
+`.github/workflows/**` or `api/migrations/**`, and one against the repository this binary was built from,
+because the owner merges Mise itself. Either way the card stays in `review` with a comment that says why, and
+the attempt is recorded once: there is no retry loop. A merge GitHub refuses (conflict, protection, missing
+permission) leaves the same trace.
+
+A card Mise merged moves to `done`, with the pull request and the merge commit in the movement. With a
+`deployment` edge, it closes only once every environment of the project serves the merged revision, and the
+dependent node waits in `backlog` until then. An environment is a name and a URL whose `/api/build` answers
+with the same contract as Mise's own:
+
+```sh
+curl -s -X POST https://mise.example/api/projects/MI/environments \
+  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+  -d '{"name":"staging","url":"https://staging.example"}'
+```
+
+`GET /api/plans/{id}` shows the revision observed in each environment under `deployments`, and the merge under
+`proof` with `origin: "merge"` when Mise performed it.
 
 ## Required checks and submissions
 
