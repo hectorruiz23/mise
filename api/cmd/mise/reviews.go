@@ -2,15 +2,11 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"strings"
-	"time"
 
 	"mise/api/internal/githubinfo"
 	"mise/api/internal/tasks/app"
 )
-
-const reviewInterval = 3 * time.Minute
 
 const (
 	reviewApproved         = "APPROVED"
@@ -27,21 +23,6 @@ type reviewWorker struct {
 	clock  app.Clock
 }
 
-func (w *reviewWorker) run(ctx context.Context, logger *slog.Logger) {
-	ticker := time.NewTicker(reviewInterval)
-	defer ticker.Stop()
-	for {
-		if err := w.poll(ctx); err != nil && ctx.Err() == nil {
-			logger.Warn("read plan reviews", "error", err)
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
-}
-
 func (w *reviewWorker) poll(ctx context.Context) error {
 	pending, err := w.store.PendingPlanReviews(ctx)
 	if err != nil {
@@ -49,7 +30,7 @@ func (w *reviewWorker) poll(ctx context.Context) error {
 	}
 	for _, item := range pending {
 		ref, ok := githubinfo.ParsePullRequest(item.PRURL)
-		if !ok {
+		if !ok || !strings.EqualFold(ref.Owner+"/"+ref.Repo, item.Repository) {
 			continue
 		}
 		reviews, err := w.github.Reviews(ctx, ref)
@@ -57,8 +38,8 @@ func (w *reviewWorker) poll(ctx context.Context) error {
 			return err
 		}
 		owner := repositoryOwner(item.Repository)
-		review, ok := latestReviewBy(reviews, owner)
-		if !ok || !strings.EqualFold(review.CommitID, item.HeadSHA) {
+		review, ok := latestReviewBy(reviews, owner, item.HeadSHA)
+		if !ok {
 			continue
 		}
 		switch strings.ToUpper(review.State) {
@@ -77,11 +58,16 @@ func (w *reviewWorker) poll(ctx context.Context) error {
 	return nil
 }
 
-func latestReviewBy(reviews []githubinfo.Review, login string) (githubinfo.Review, bool) {
+func latestReviewBy(reviews []githubinfo.Review, login, headSHA string) (githubinfo.Review, bool) {
 	var latest githubinfo.Review
 	found := false
 	for _, review := range reviews {
-		if !strings.EqualFold(review.User, login) {
+		if !strings.EqualFold(review.User, login) || !strings.EqualFold(review.CommitID, headSHA) {
+			continue
+		}
+		switch strings.ToUpper(review.State) {
+		case reviewApproved, reviewChangesRequested:
+		default:
 			continue
 		}
 		if !found || !review.SubmittedAt.Before(latest.SubmittedAt) {

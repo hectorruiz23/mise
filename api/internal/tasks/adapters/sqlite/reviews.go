@@ -25,7 +25,8 @@ func (r *Repo) ReportScenario(
 	if !commitSHA(head) {
 		return app.PlanGraph{}, invalidInput("head_sha must be the full 40-character commit")
 	}
-	if strings.TrimSpace(report.Command) == "" {
+	command := strings.TrimSpace(report.Command)
+	if command == "" {
 		return app.PlanGraph{}, invalidInput("the scenario command is required")
 	}
 	if report.Outcome != app.ScenarioPassed && report.Outcome != app.ScenarioFailed {
@@ -36,10 +37,10 @@ func (r *Repo) ReportScenario(
 	}
 
 	err := r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
-		var state string
+		var state, scenario string
 		var completedAt sql.NullInt64
-		if err := conn.QueryRowContext(ctx, `SELECT state, completed_at FROM plans WHERE id = ?`,
-			planID).Scan(&state, &completedAt); err != nil {
+		if err := conn.QueryRowContext(ctx, `SELECT state, completed_at, scenario FROM plans WHERE id = ?`,
+			planID).Scan(&state, &completedAt, &scenario); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return &domain.RuleError{Code: domain.CodeNotFound, Msg: "plan not found"}
 			}
@@ -47,6 +48,9 @@ func (r *Repo) ReportScenario(
 		}
 		if state != domain.PlanActive || completedAt.Valid {
 			return planConflict("the plan is not running")
+		}
+		if command != scenario {
+			return invalidInput("the reported command must match the approved scenario")
 		}
 		var taskState string
 		err := conn.QueryRowContext(ctx, `SELECT t.state FROM plan_nodes n
@@ -70,20 +74,9 @@ func (r *Repo) ReportScenario(
 		if !leased {
 			return &domain.RuleError{Code: domain.CodeLeaseRequired, Msg: "the agent needs a live lease it owns"}
 		}
-		var declared string
-		err = conn.QueryRowContext(ctx, `SELECT head_sha FROM submissions
-			WHERE task_key = ? ORDER BY id DESC LIMIT 1`, report.TaskKey).Scan(&declared)
-		switch {
-		case err == nil && declared != head:
-			return planConflict("the reported revision is not the one declared for the card")
-		case err == nil, errors.Is(err, sql.ErrNoRows):
-		default:
-			return err
-		}
-
 		var existing string
 		err = conn.QueryRowContext(ctx, `SELECT outcome FROM plan_scenarios
-			WHERE plan_id = ? AND task_key = ? AND head_sha = ?`, planID, report.TaskKey, head).Scan(&existing)
+			WHERE plan_id = ? AND task_key = ? AND head_sha = ? AND command = ?`, planID, report.TaskKey, head, command).Scan(&existing)
 		switch {
 		case err == nil && existing == report.Outcome:
 			return nil
@@ -94,8 +87,11 @@ func (r *Repo) ReportScenario(
 		}
 		if _, err := conn.ExecContext(ctx, `INSERT INTO plan_scenarios
 			(plan_id, task_key, head_sha, command, outcome, evidence_url, notes, recorded_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			planID, report.TaskKey, head, strings.TrimSpace(report.Command), report.Outcome,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (plan_id, task_key, head_sha) DO UPDATE SET
+				command = excluded.command, outcome = excluded.outcome,
+				evidence_url = excluded.evidence_url, notes = excluded.notes, recorded_at = excluded.recorded_at`,
+			planID, report.TaskKey, head, command, report.Outcome,
 			nullableText(report.EvidenceURL), nullableText(report.Notes), now); err != nil {
 			return fmt.Errorf("report scenario: %w", err)
 		}
@@ -120,16 +116,14 @@ func (r *Repo) ReportScenario(
 
 func (r *Repo) PendingPlanReviews(ctx context.Context) ([]app.PendingPlanReview, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT p.id, n.task_key, d.pr_url, lower(d.head_sha), p.repository
+		SELECT p.id, n.task_key, d.pr_url, d.head_sha, d.evidence, p.repository
 		FROM plans p
 		JOIN plan_nodes n ON n.plan_id = p.id AND n.reveals = 1
+		JOIN tasks t ON t.key = n.task_key AND t.state IN ('review', 'done')
 		JOIN deliveries d ON d.id = (SELECT MAX(id) FROM deliveries
-		                             WHERE task_key = n.task_key AND pr_url IS NOT NULL
-		                               AND head_sha IS NOT NULL)
+		                             WHERE task_key = n.task_key AND created_at >= p.approved_at)
 		WHERE p.state = 'active' AND p.visual_review = 1 AND p.completed_at IS NULL
-		  AND NOT EXISTS (SELECT 1 FROM plan_approvals a
-		                  WHERE a.plan_id = p.id AND a.task_key = n.task_key
-		                    AND a.head_sha = lower(d.head_sha))
+		  AND d.pr_url IS NOT NULL
 		ORDER BY p.id`)
 	if err != nil {
 		return nil, fmt.Errorf("pending plan reviews: %w", err)
@@ -139,9 +133,18 @@ func (r *Repo) PendingPlanReviews(ctx context.Context) ([]app.PendingPlanReview,
 	pending := make([]app.PendingPlanReview, 0)
 	for rows.Next() {
 		var item app.PendingPlanReview
-		if err := rows.Scan(&item.PlanID, &item.TaskKey, &item.PRURL, &item.HeadSHA,
+		var head, evidence sql.NullString
+		if err := rows.Scan(&item.PlanID, &item.TaskKey, &item.PRURL, &head, &evidence,
 			&item.Repository); err != nil {
 			return nil, fmt.Errorf("pending plan reviews: scan: %w", err)
+		}
+		item.HeadSHA = strings.ToLower(strings.TrimSpace(head.String))
+		if !commitSHA(item.HeadSHA) {
+			var ok bool
+			item.HeadSHA, ok = evidenceHeadSHA(evidence.String)
+			if !ok {
+				continue
+			}
 		}
 		pending = append(pending, item)
 	}
@@ -193,15 +196,22 @@ func (r *Repo) RequestCorrection(
 	}
 	err := r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
 		var completedAt sql.NullInt64
-		if err := conn.QueryRowContext(ctx, `SELECT completed_at FROM plans WHERE id = ?`,
-			planID).Scan(&completedAt); err != nil {
+		var state string
+		if err := conn.QueryRowContext(ctx, `SELECT state, completed_at FROM plans WHERE id = ?`,
+			planID).Scan(&state, &completedAt); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return &domain.RuleError{Code: domain.CodeNotFound, Msg: "plan not found"}
 			}
 			return err
 		}
-		if completedAt.Valid {
-			return planConflict("the plan is already completed")
+		if state != domain.PlanActive || completedAt.Valid {
+			return nil
+		}
+		if origin == "review:"+head {
+			if _, err := conn.ExecContext(ctx, `DELETE FROM plan_approvals
+				WHERE plan_id = ? AND task_key = ? AND head_sha = ?`, planID, taskKey, head); err != nil {
+				return fmt.Errorf("invalidate approval: %w", err)
+			}
 		}
 		if _, err := r.ensureCorrection(ctx, conn, planID, taskKey, origin, reason, nil, now); err != nil {
 			return err
@@ -259,7 +269,7 @@ func (r *Repo) ensureCorrection(
 	notes += "\nFix what the approved criteria demand. If the fix needs a different acceptance"
 	notes += " criterion, stop and ask the owner; the plan keeps the one it was approved with."
 
-	idempotency := "correction:" + origin
+	idempotency := fmt.Sprintf("correction:%d:%s", planID, origin)
 	if len(idempotency) > 128 {
 		idempotency = idempotency[:128]
 	}
@@ -294,9 +304,9 @@ func (r *Repo) ensureCorrection(
 func (r *Repo) completePlanIfReady(ctx context.Context, conn *sql.Conn, planID int64, now int64) error {
 	var completedAt sql.NullInt64
 	var visual int
-	var project string
-	err := conn.QueryRowContext(ctx, `SELECT completed_at, visual_review, project_key
-		FROM plans WHERE id = ? AND state = 'active'`, planID).Scan(&completedAt, &visual, &project)
+	var project, scenario, target string
+	err := conn.QueryRowContext(ctx, `SELECT completed_at, visual_review, project_key, scenario, target_environment
+		FROM plans WHERE id = ? AND state = 'active'`, planID).Scan(&completedAt, &visual, &project, &scenario, &target)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -343,8 +353,8 @@ func (r *Repo) completePlanIfReady(ctx context.Context, conn *sql.Conn, planID i
 	}
 	var outcome string
 	err = conn.QueryRowContext(ctx, `SELECT outcome FROM plan_scenarios
-		WHERE plan_id = ? AND task_key = ? AND head_sha = ?`,
-		planID, finalKey, proof.HeadSHA).Scan(&outcome)
+		WHERE plan_id = ? AND task_key = ? AND head_sha = ? AND command = ?`,
+		planID, finalKey, proof.HeadSHA, scenario).Scan(&outcome)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return nil
@@ -365,9 +375,12 @@ func (r *Repo) completePlanIfReady(ctx context.Context, conn *sql.Conn, planID i
 		}
 	}
 
-	environments, err := planEnvironments(ctx, conn, project)
-	if err != nil {
-		return err
+	environments := []string{target}
+	if target == "" {
+		environments, err = planEnvironments(ctx, conn, project)
+		if err != nil {
+			return err
+		}
 	}
 	if len(environments) > 0 {
 		observed, err := planObservedDeployments(ctx, conn, planID)

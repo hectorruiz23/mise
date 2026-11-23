@@ -24,7 +24,7 @@ const (
 var protectedPrefixes = []string{".github/workflows/", "api/migrations/"}
 
 type merger interface {
-	Merge(context.Context, githubinfo.Ref) (string, error)
+	Merge(context.Context, githubinfo.Ref, string) (string, error)
 	PullFiles(context.Context, githubinfo.Ref) ([]string, error)
 }
 
@@ -85,11 +85,12 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 	ref, ok := githubinfo.ParsePullRequest(candidate.PRURL)
 	if !ok {
 		return w.store.RecordMergeAttempt(ctx, app.MergeOutcome{
-			TaskKey: candidate.TaskKey,
-			PRURL:   candidate.PRURL,
-			ActorID: candidate.ActorID,
-			Outcome: app.MergeOutcomeFailed,
-			Reason:  "the delivery does not link a GitHub pull request",
+			DeliveryID: candidate.DeliveryID,
+			TaskKey:    candidate.TaskKey,
+			PRURL:      candidate.PRURL,
+			ActorID:    candidate.ActorID,
+			Outcome:    app.MergeOutcomeFailed,
+			Reason:     "the delivery does not link a GitHub pull request",
 		}, w.clock.Now())
 	}
 	if w.owned != "" && strings.EqualFold(ref.Owner+"/"+ref.Repo, w.owned) {
@@ -102,23 +103,25 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 	}
 	if offending := protected(files); len(offending) > 0 {
 		return w.store.RecordMergeAttempt(ctx, app.MergeOutcome{
-			TaskKey: candidate.TaskKey,
-			PRURL:   candidate.PRURL,
-			ActorID: candidate.ActorID,
-			Outcome: app.MergeOutcomeRefused,
-			Reason:  "it changes " + strings.Join(offending, ", "),
+			DeliveryID: candidate.DeliveryID,
+			TaskKey:    candidate.TaskKey,
+			PRURL:      candidate.PRURL,
+			ActorID:    candidate.ActorID,
+			Outcome:    app.MergeOutcomeRefused,
+			Reason:     "it changes " + strings.Join(offending, ", "),
 		}, w.clock.Now())
 	}
 
-	sha, err := w.github.Merge(ctx, ref)
+	sha, err := w.github.Merge(ctx, ref, *candidate.HeadSHA)
 	if err != nil {
 		if refusal, refused := githubinfo.RefusalOf(err); refused {
 			return w.store.RecordMergeAttempt(ctx, app.MergeOutcome{
-				TaskKey: candidate.TaskKey,
-				PRURL:   candidate.PRURL,
-				ActorID: candidate.ActorID,
-				Outcome: app.MergeOutcomeFailed,
-				Reason:  "GitHub answered " + refusal.Message,
+				DeliveryID: candidate.DeliveryID,
+				TaskKey:    candidate.TaskKey,
+				PRURL:      candidate.PRURL,
+				ActorID:    candidate.ActorID,
+				Outcome:    app.MergeOutcomeFailed,
+				Reason:     "GitHub answered " + refusal.Message,
 			}, w.clock.Now())
 		}
 		return err

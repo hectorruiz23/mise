@@ -27,13 +27,17 @@ func (e *MergeRefusal) Error() string {
 	return strconv.Itoa(e.Status) + ": " + e.Message
 }
 
-func (c *Client) Merge(ctx context.Context, ref Ref) (string, error) {
+func (c *Client) Merge(ctx context.Context, ref Ref, headSHA string) (string, error) {
 	if c.mergeToken == "" {
 		return "", ErrMergeTokenMissing
 	}
+	if !fullCommitSHA(headSHA) {
+		return "", errors.New("merge requires a full head SHA")
+	}
 	body, err := json.Marshal(struct {
 		Method string `json:"merge_method"`
-	}{Method: MergeMethodSquash})
+		SHA    string `json:"sha"`
+	}{Method: MergeMethodSquash, SHA: headSHA})
 	if err != nil {
 		return "", &fetchError{reason: ReasonUpstreamError}
 	}

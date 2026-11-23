@@ -18,12 +18,13 @@ type MergeCandidate struct {
 }
 
 type MergeOutcome struct {
-	TaskKey  string
-	PRURL    string
-	ActorID  int64
-	Outcome  string
-	Reason   string
-	MergeSHA *string
+	DeliveryID int64
+	TaskKey    string
+	PRURL      string
+	ActorID    int64
+	Outcome    string
+	Reason     string
+	MergeSHA   *string
 }
 
 type MergeEvidence struct {
