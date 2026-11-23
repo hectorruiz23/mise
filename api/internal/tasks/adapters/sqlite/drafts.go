@@ -174,6 +174,38 @@ func (r *Repo) Draft(ctx context.Context, actor domain.Actor, id int64) (app.Pla
 	return r.readDraft(ctx, r.db, id)
 }
 
+func (r *Repo) ListDrafts(ctx context.Context, actor domain.Actor, project string) ([]app.PlanDraftSummary, error) {
+	if actor.Kind == domain.Viewer {
+		return nil, &domain.RuleError{Code: domain.CodeForbidden, Msg: "a credential is required to read a proposal"}
+	}
+	query := `SELECT id, project_key, version, state, plan_id FROM plan_drafts`
+	args := make([]any, 0, 1)
+	if trimmed := strings.TrimSpace(project); trimmed != "" {
+		query += ` WHERE project_key = ?`
+		args = append(args, trimmed)
+	}
+	query += ` ORDER BY id DESC`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	drafts := make([]app.PlanDraftSummary, 0)
+	for rows.Next() {
+		var draft app.PlanDraftSummary
+		var planID sql.NullInt64
+		if err := rows.Scan(&draft.ID, &draft.Project, &draft.Version, &draft.State, &planID); err != nil {
+			return nil, err
+		}
+		if planID.Valid {
+			value := planID.Int64
+			draft.PlanID = &value
+		}
+		drafts = append(drafts, draft)
+	}
+	return drafts, rows.Err()
+}
+
 type draftQuerier interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)

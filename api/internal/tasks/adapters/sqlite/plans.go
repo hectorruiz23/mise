@@ -258,8 +258,15 @@ func (r *Repo) graphProofs(ctx context.Context, q planQuerier, id int64) (map[st
 	return proofs, rows.Err()
 }
 
-func (r *Repo) ListGraphs(ctx context.Context) ([]app.PlanGraph, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id FROM plans ORDER BY id DESC`)
+func (r *Repo) ListGraphs(ctx context.Context, project string) ([]app.PlanGraph, error) {
+	query := `SELECT id FROM plans`
+	args := make([]any, 0, 1)
+	if trimmed := strings.TrimSpace(project); trimmed != "" {
+		query += ` WHERE project_key = ?`
+		args = append(args, trimmed)
+	}
+	query += ` ORDER BY id DESC`
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

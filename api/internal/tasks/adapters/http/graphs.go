@@ -105,7 +105,7 @@ func (h *Graphs) List(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteError(w, http.StatusForbidden, kernel.CodeForbidden, "a credential is required to inspect a plan")
 		return
 	}
-	graphs, err := h.store.ListGraphs(r.Context())
+	graphs, err := h.store.ListGraphs(r.Context(), r.URL.Query().Get("project"))
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return

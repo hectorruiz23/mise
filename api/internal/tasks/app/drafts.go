@@ -50,6 +50,14 @@ type PlanDraft struct {
 	UpdatedAt         int64       `json:"updated_at"`
 }
 
+type PlanDraftSummary struct {
+	ID      int64  `json:"id"`
+	Project string `json:"project"`
+	Version int64  `json:"version"`
+	State   string `json:"state"`
+	PlanID  *int64 `json:"plan_id"`
+}
+
 type DraftInput struct {
 	Project           string
 	Outcome           string
@@ -66,6 +74,7 @@ type PlanDraftStore interface {
 	CreateDraft(context.Context, domain.Actor, DraftInput, PlanPolicy, int64) (PlanDraft, error)
 	UpdateDraft(context.Context, domain.Actor, int64, int64, DraftInput, int64) (PlanDraft, error)
 	Draft(context.Context, domain.Actor, int64) (PlanDraft, error)
+	ListDrafts(context.Context, domain.Actor, string) ([]PlanDraftSummary, error)
 	DiscardDraft(context.Context, domain.Actor, int64, int64) (PlanDraft, error)
 	ApproveDraft(context.Context, domain.Actor, int64, int64, PlanPolicy, int64) (PlanDraft, error)
 }

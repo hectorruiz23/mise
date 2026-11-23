@@ -124,7 +124,7 @@ type PendingPlanReview struct {
 type PlanStore interface {
 	ApproveGraph(context.Context, domain.Actor, []string, []domain.PlanEdge, PlanPolicy, PlanReview, int64) (PlanGraph, error)
 	Graph(context.Context, int64) (PlanGraph, error)
-	ListGraphs(context.Context) ([]PlanGraph, error)
+	ListGraphs(context.Context, string) ([]PlanGraph, error)
 	CancelGraph(context.Context, domain.Actor, int64, int64) (PlanGraph, error)
 	PendingGraphTasks(context.Context) ([]PendingPlanTask, error)
 	ReleaseGraphTask(context.Context, int64, string, PlanProof, int64) (PlanGraph, error)

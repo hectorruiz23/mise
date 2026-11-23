@@ -120,6 +120,9 @@ echo "Mise acceptance: starting server on $origin"
 MISE_ADDR="127.0.0.1:$port" \
     MISE_DB="$db" \
     MISE_PUBLIC_ORIGIN="$origin" \
+    MISE_PLAN_REPOSITORY=example/project \
+    MISE_PLAN_BRANCH=main \
+    MISE_PLAN_WORKFLOW_ID=9 \
     MISE_LOG_LEVEL=info \
     "$tmp/mise" >"$server_log" 2>&1 &
 server_pid=$!
@@ -522,7 +525,99 @@ else
     fail_check "attempt 11 status=$last_status Retry-After=$last_retry body=$body"
 fi
 
-check_start 22 "Durable state after the server stops"
+check_start 22 "GET /api/plan-drafts filters by project, newest first"
+mi_one_body='{"project":"MI","outcome":"First proposal","scenario":"make accept","tasks":[{"key":"T1","title":"First task"},{"key":"T2","title":"Second task"}]}'
+mi_two_body='{"project":"MI","outcome":"Second proposal","scenario":"make accept","tasks":[{"key":"T1","title":"Third task"},{"key":"T2","title":"Fourth task"}]}'
+po_body='{"project":"PO","outcome":"Foreign proposal","scenario":"make accept","tasks":[{"key":"T1","title":"Fifth task"},{"key":"T2","title":"Sixth task"}]}'
+http POST /api/plan-drafts -H "$human_auth" -H "$json_ct" \
+    --data-binary "$mi_one_body" || fail_check "curl failure"
+if [ "$status" != "201" ]; then
+    fail_check "first MI proposal status=$status body=$body"
+fi
+mi_one=$(json_value 'd["id"]' 2>/dev/null || true)
+http POST /api/plan-drafts -H "$human_auth" -H "$json_ct" \
+    --data-binary "$po_body" || fail_check "curl failure"
+if [ "$status" != "201" ]; then
+    fail_check "PO proposal status=$status body=$body"
+fi
+po_draft=$(json_value 'd["id"]' 2>/dev/null || true)
+http POST /api/plan-drafts -H "$human_auth" -H "$json_ct" \
+    --data-binary "$mi_two_body" || fail_check "curl failure"
+if [ "$status" != "201" ]; then
+    fail_check "second MI proposal status=$status body=$body"
+fi
+mi_two=$(json_value 'd["id"]' 2>/dev/null || true)
+http POST "/api/plan-drafts/$mi_one/approve" -H "$human_auth" -H 'If-Match: "1"' \
+    || fail_check "curl failure"
+if [ "$status" != "200" ]; then
+    fail_check "MI approval status=$status body=$body"
+fi
+mi_plan=$(json_value 'd["plan_id"]' 2>/dev/null || true)
+http POST "/api/plan-drafts/$po_draft/approve" -H "$human_auth" -H 'If-Match: "1"' \
+    || fail_check "curl failure"
+if [ "$status" != "200" ]; then
+    fail_check "PO approval status=$status body=$body"
+fi
+po_plan=$(json_value 'd["plan_id"]' 2>/dev/null || true)
+http GET '/api/plan-drafts?project=MI' -H "$human_auth" || fail_check "curl failure"
+draft_list_status=$status
+draft_count=$(json_value 'len(d)' 2>/dev/null || true)
+draft_fields=$(json_value 'all(all(k in x for k in ("id", "version", "state", "plan_id")) for x in d)' 2>/dev/null || true)
+draft_order=$(json_value 'all(d[i]["id"] > d[i+1]["id"] for i in range(len(d)-1))' 2>/dev/null || true)
+draft_projects=$(json_value 'sorted({x["project"] for x in d})' 2>/dev/null || true)
+newest_draft=$(json_value 'd[0]["id"]' 2>/dev/null || true)
+older_draft=$(json_value 'd[1]["id"]' 2>/dev/null || true)
+newest_draft_plan=$(json_value 'd[0]["plan_id"]' 2>/dev/null || true)
+older_draft_state=$(json_value 'd[1]["state"]' 2>/dev/null || true)
+older_draft_plan=$(json_value 'd[1]["plan_id"]' 2>/dev/null || true)
+http GET /api/plan-drafts -H "$human_auth" || fail_check "curl failure"
+all_draft_status=$status
+all_draft_ids=$(json_value '[x["id"] for x in d]' 2>/dev/null || true)
+if [ "$draft_list_status" = "200" ] && [ "$draft_count" = "2" ] \
+    && [ "$draft_fields" = "True" ] && [ "$draft_order" = "True" ] \
+    && [ "$draft_projects" = "['MI']" ] \
+    && [ "$newest_draft" = "$mi_two" ] && [ "$older_draft" = "$mi_one" ] \
+    && [ "$newest_draft_plan" = "None" ] \
+    && [ "$older_draft_state" = "approved" ] && [ "$older_draft_plan" = "$mi_plan" ] \
+    && [ "$all_draft_status" = "200" ] \
+    && [ "$all_draft_ids" = "[$mi_two, $po_draft, $mi_one]" ]; then
+    pass_check "MI=[$mi_two $mi_one] newest first, PO $po_draft excluded, all=$all_draft_ids"
+else
+    fail_check "status=$draft_list_status all=$all_draft_status count=$draft_count order=$draft_order projects=$draft_projects newer=$newest_draft/$newest_draft_plan older=$older_draft/$older_draft_state/$older_draft_plan body=$body"
+fi
+
+check_start 23 "GET /api/plans filters by project"
+http GET '/api/plans?project=MI' -H "$human_auth" || fail_check "curl failure"
+plan_list_status=$status
+plan_count=$(json_value 'len(d)' 2>/dev/null || true)
+listed_plan=$(json_value 'd[0]["id"]' 2>/dev/null || true)
+listed_plan_project=$(json_value 'd[0]["project"]' 2>/dev/null || true)
+http GET /api/plans -H "$human_auth" || fail_check "curl failure"
+all_plan_status=$status
+all_plan_ids=$(json_value '[x["id"] for x in d]' 2>/dev/null || true)
+if [ "$plan_list_status" = "200" ] && [ "$plan_count" = "1" ] \
+    && [ "$listed_plan" = "$mi_plan" ] && [ "$listed_plan_project" = "MI" ] \
+    && [ "$all_plan_status" = "200" ] && [ "$all_plan_ids" = "[$po_plan, $mi_plan]" ]; then
+    pass_check "MI=[$mi_plan], PO $po_plan excluded, all=$all_plan_ids"
+else
+    fail_check "status=$plan_list_status all=$all_plan_status count=$plan_count plan=$listed_plan/$listed_plan_project body=$body"
+fi
+
+check_start 24 "Proposal and plan lists refuse the visitor"
+http GET '/api/plan-drafts?project=MI' || fail_check "curl failure"
+draft_viewer_status=$status
+draft_viewer_error=$(json_value 'd.get("error", "")' 2>/dev/null || true)
+http GET '/api/plans?project=MI' || fail_check "curl failure"
+plan_viewer_status=$status
+plan_viewer_error=$(json_value 'd.get("error", "")' 2>/dev/null || true)
+if [ "$draft_viewer_status" = "403" ] && [ "$draft_viewer_error" = "forbidden" ] \
+    && [ "$plan_viewer_status" = "403" ] && [ "$plan_viewer_error" = "forbidden" ]; then
+    pass_check "proposals 403, plans 403"
+else
+    fail_check "drafts=$draft_viewer_status/$draft_viewer_error plans=$plan_viewer_status/$plan_viewer_error body=$body"
+fi
+
+check_start 25 "Durable state after the server stops"
 kill "$server_pid" 2>/dev/null || true
 for ((wait_tick = 0; wait_tick < 100; wait_tick++)); do
     if ! kill -0 "$server_pid" 2>/dev/null; then
@@ -539,15 +634,15 @@ server_pid=""
 tasks_count=$(sqlite3 "$db" 'select count(*) from tasks;' 2>/dev/null || true)
 deliveries_count=$(sqlite3 "$db" 'select count(*) from deliveries;' 2>/dev/null || true)
 movements_count=$(sqlite3 "$db" 'select count(*) from task_movements;' 2>/dev/null || true)
-if [ "$tasks_count" = "3" ] && [ "$deliveries_count" = "1" ] && [ "$movements_count" = "10" ]; then
+if [ "$tasks_count" = "7" ] && [ "$deliveries_count" = "1" ] && [ "$movements_count" = "18" ]; then
     pass_check "tasks=$tasks_count deliveries=$deliveries_count movements=$movements_count"
 else
     fail_check "tasks=$tasks_count deliveries=$deliveries_count movements=$movements_count"
 fi
 
-if [ "$passed" -ne 22 ]; then
-    echo "FAIL  $passed/22 checks passed" >&2
+if [ "$passed" -ne 25 ]; then
+    echo "FAIL  $passed/25 checks passed" >&2
     exit 1
 fi
-echo "$passed/22 checks passed"
+echo "$passed/25 checks passed"
 exit 0
