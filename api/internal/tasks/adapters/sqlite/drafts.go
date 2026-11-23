@@ -24,6 +24,9 @@ func validateDraft(input app.DraftInput) error {
 	if strings.TrimSpace(input.Scenario) == "" {
 		return invalidInput("the acceptance scenario command is required")
 	}
+	if len(strings.TrimSpace(input.TargetEnvironment)) > 40 {
+		return invalidInput("the target environment name is at most 40 characters")
+	}
 	if len(input.Tasks) < 2 {
 		return invalidInput("a plan needs at least two tasks")
 	}
@@ -111,12 +114,16 @@ func (r *Repo) CreateDraft(
 			return &domain.RuleError{Code: domain.CodeNotFound,
 				Msg: fmt.Sprintf("unknown project %q", input.Project)}
 		}
+		if err := requireDraftEnvironment(ctx, conn, strings.TrimSpace(input.Project), input.TargetEnvironment); err != nil {
+			return err
+		}
 		err := conn.QueryRowContext(ctx, `INSERT INTO plan_drafts
-			(project_key, author_id, repository, branch, workflow_id, outcome, scenario,
+			(project_key, author_id, repository, branch, workflow_id, outcome, scenario, target_environment,
 			 visual_review, visible_change, reveal_key, version, state, created_at, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'draft', ?, ?) RETURNING id`,
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'draft', ?, ?) RETURNING id`,
 			strings.TrimSpace(input.Project), actor.ID, policy.Repository, policy.Branch,
 			policy.WorkflowID, strings.TrimSpace(input.Outcome), strings.TrimSpace(input.Scenario),
+			strings.TrimSpace(input.TargetEnvironment),
 			boolFlag(input.VisualReview), nullableText(input.VisibleChange),
 			nullableKey(input.RevealKey), now, now).Scan(&draftID)
 		if err != nil {
@@ -178,11 +185,12 @@ func (r *Repo) readDraft(ctx context.Context, q draftQuerier, id int64) (app.Pla
 	var visualReview int
 	var approvedBy, approvedAt, planID sql.NullInt64
 	err := q.QueryRowContext(ctx, `SELECT id, project_key, author_id, repository, branch, workflow_id,
-		outcome, scenario, visual_review, visible_change, reveal_key, version, state,
+		outcome, scenario, target_environment, visual_review, visible_change, reveal_key, version, state,
 		approved_by, approved_at, plan_id, created_at, updated_at
 		FROM plan_drafts WHERE id = ?`, id).
 		Scan(&draft.ID, &draft.Project, &draft.AuthorID, &draft.Policy.Repository, &draft.Policy.Branch,
-			&draft.Policy.WorkflowID, &draft.Outcome, &draft.Scenario, &visualReview, &visibleChange,
+			&draft.Policy.WorkflowID, &draft.Outcome, &draft.Scenario, &draft.TargetEnvironment,
+			&visualReview, &visibleChange,
 			&revealKey, &draft.Version, &draft.State, &approvedBy, &approvedAt, &planID,
 			&draft.CreatedAt, &draft.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -290,6 +298,22 @@ func draftRoots(tasks []app.DraftTask, edges []app.DraftEdge) []string {
 	return roots
 }
 
+func requireDraftEnvironment(ctx context.Context, conn *sql.Conn, project, name string) error {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return nil
+	}
+	var exists bool
+	if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM environments
+		WHERE project_key = ? AND name = ?)`, project, trimmed).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return invalidInput("the target environment must be registered in the project")
+	}
+	return nil
+}
+
 func (r *Repo) UpdateDraft(
 	ctx context.Context,
 	actor domain.Actor,
@@ -325,10 +349,15 @@ func (r *Repo) UpdateDraft(
 		if strings.TrimSpace(input.Project) != project {
 			return planConflict("a proposal cannot change its project")
 		}
+		if err := requireDraftEnvironment(ctx, conn, project, input.TargetEnvironment); err != nil {
+			return err
+		}
 		if _, err := conn.ExecContext(ctx, `UPDATE plan_drafts SET outcome = ?, scenario = ?,
-			visual_review = ?, visible_change = ?, reveal_key = ?, version = version + 1, updated_at = ?
+			target_environment = ?, visual_review = ?, visible_change = ?, reveal_key = ?,
+			version = version + 1, updated_at = ?
 			WHERE id = ? AND version = ?`,
-			strings.TrimSpace(input.Outcome), strings.TrimSpace(input.Scenario), boolFlag(input.VisualReview),
+			strings.TrimSpace(input.Outcome), strings.TrimSpace(input.Scenario),
+			strings.TrimSpace(input.TargetEnvironment), boolFlag(input.VisualReview),
 			nullableText(input.VisibleChange), nullableKey(input.RevealKey), now, id, version); err != nil {
 			return fmt.Errorf("update draft: %w", err)
 		}
@@ -452,10 +481,11 @@ func (r *Repo) ApproveDraft(
 		}
 		planID, err := r.activatePlan(ctx, conn, actor.ID, draft.Project, keys, edges, policy,
 			app.PlanReview{
-				Scenario:      draft.Scenario,
-				VisibleChange: draft.VisibleChange,
-				VisualReview:  draft.VisualReview,
-				RevealTask:    reveal,
+				Scenario:          draft.Scenario,
+				TargetEnvironment: draft.TargetEnvironment,
+				VisibleChange:     draft.VisibleChange,
+				VisualReview:      draft.VisualReview,
+				RevealTask:        reveal,
 			}, now)
 		if err != nil {
 			return err

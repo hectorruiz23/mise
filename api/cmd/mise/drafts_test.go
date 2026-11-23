@@ -157,6 +157,76 @@ func TestDraftProposalKeepsItsLinkAndActivatesOnce(t *testing.T) {
 	}
 }
 
+func TestDraftCarriesTheTargetEnvironmentIntoThePlan(t *testing.T) {
+	f := newIntegrationFixture(t)
+	policy := draftPolicy()
+	if _, err := f.service.AddEnvironment(f.ctx, f.owner, "MI", "production", "https://mise.example.test"); err != nil {
+		t.Fatalf("register environment: %v", err)
+	}
+
+	unknown := draftInput()
+	unknown.TargetEnvironment = "nowhere"
+	_, err := f.repo.CreateDraft(f.ctx, f.agent, unknown, policy, f.clock.Now())
+	wantCode(t, err, domain.CodeInvalidInput)
+
+	input := draftInput()
+	input.TargetEnvironment = "production"
+	draft, err := f.repo.CreateDraft(f.ctx, f.agent, input, policy, f.clock.Now())
+	if err != nil {
+		t.Fatalf("create draft: %v", err)
+	}
+	if draft.TargetEnvironment != "production" {
+		t.Fatalf("draft target = %q, want production", draft.TargetEnvironment)
+	}
+
+	edited := draftInput()
+	edited.TargetEnvironment = "production"
+	edited.Outcome = "the board shows what was closed, newest first"
+	f.clock.now += 60
+	updated, err := f.repo.UpdateDraft(f.ctx, f.agent, draft.ID, draft.Version, edited, f.clock.Now())
+	if err != nil {
+		t.Fatalf("update draft: %v", err)
+	}
+	if updated.TargetEnvironment != "production" {
+		t.Fatalf("the edit dropped the target: %q", updated.TargetEnvironment)
+	}
+
+	f.clock.now += 60
+	approved, err := f.repo.ApproveDraft(f.ctx, f.owner, draft.ID, updated.Version, policy, f.clock.Now())
+	if err != nil {
+		t.Fatalf("approve draft: %v", err)
+	}
+	plan, err := f.repo.Graph(f.ctx, *approved.PlanID)
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	if plan.TargetEnvironment != "production" {
+		t.Fatalf("the approved plan lost its target environment: %q", plan.TargetEnvironment)
+	}
+	if plan.Scenario != edited.Scenario {
+		t.Fatalf("plan scenario = %q, want %q", plan.Scenario, edited.Scenario)
+	}
+
+	open := draftInput()
+	open.Outcome = "something without an agreed environment"
+	plain, err := f.repo.CreateDraft(f.ctx, f.agent, open, policy, f.clock.Now())
+	if err != nil {
+		t.Fatalf("create draft without a target: %v", err)
+	}
+	f.clock.now += 60
+	plainApproved, err := f.repo.ApproveDraft(f.ctx, f.owner, plain.ID, plain.Version, policy, f.clock.Now())
+	if err != nil {
+		t.Fatalf("approve draft without a target: %v", err)
+	}
+	plainPlan, err := f.repo.Graph(f.ctx, *plainApproved.PlanID)
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	if plainPlan.TargetEnvironment != "" {
+		t.Fatalf("a proposal with no target invented %q", plainPlan.TargetEnvironment)
+	}
+}
+
 func TestDraftGuardsApprovalAndEditing(t *testing.T) {
 	f := newIntegrationFixture(t)
 	policy := draftPolicy()

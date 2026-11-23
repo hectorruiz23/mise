@@ -22,13 +22,14 @@ func NewDrafts(store app.PlanDraftStore, policy app.PlanPolicy, clock app.Clock)
 }
 
 type draftBody struct {
-	Project       string  `json:"project"`
-	Outcome       string  `json:"outcome"`
-	Scenario      string  `json:"scenario"`
-	VisibleChange *string `json:"visible_change"`
-	VisualReview  bool    `json:"visual_review"`
-	RevealKey     string  `json:"reveal_key"`
-	Tasks         []struct {
+	Project           string  `json:"project"`
+	Outcome           string  `json:"outcome"`
+	Scenario          string  `json:"scenario"`
+	TargetEnvironment string  `json:"target_environment"`
+	VisibleChange     *string `json:"visible_change"`
+	VisualReview      bool    `json:"visual_review"`
+	RevealKey         string  `json:"reveal_key"`
+	Tasks             []struct {
 		Key        string  `json:"key"`
 		Title      string  `json:"title"`
 		Notes      *string `json:"notes"`
@@ -55,14 +56,15 @@ func (b draftBody) input() app.DraftInput {
 		edges = append(edges, app.DraftEdge{From: edge.From, To: edge.To, Kind: edge.Kind})
 	}
 	return app.DraftInput{
-		Project:       b.Project,
-		Outcome:       b.Outcome,
-		Scenario:      b.Scenario,
-		VisibleChange: b.VisibleChange,
-		VisualReview:  b.VisualReview,
-		RevealKey:     b.RevealKey,
-		Tasks:         tasks,
-		Edges:         edges,
+		Project:           b.Project,
+		Outcome:           b.Outcome,
+		Scenario:          b.Scenario,
+		TargetEnvironment: b.TargetEnvironment,
+		VisibleChange:     b.VisibleChange,
+		VisualReview:      b.VisualReview,
+		RevealKey:         b.RevealKey,
+		Tasks:             tasks,
+		Edges:             edges,
 	}
 }
 

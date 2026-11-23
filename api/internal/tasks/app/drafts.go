@@ -28,36 +28,38 @@ type DraftEdge struct {
 }
 
 type PlanDraft struct {
-	ID            int64       `json:"id"`
-	Project       string      `json:"project"`
-	AuthorID      int64       `json:"author_id"`
-	Policy        PlanPolicy  `json:"policy"`
-	Outcome       string      `json:"outcome"`
-	Scenario      string      `json:"scenario"`
-	VisibleChange *string     `json:"visible_change"`
-	VisualReview  bool        `json:"visual_review"`
-	RevealKey     *string     `json:"reveal_key"`
-	Version       int64       `json:"version"`
-	State         string      `json:"state"`
-	ApprovedBy    *int64      `json:"approved_by"`
-	ApprovedAt    *int64      `json:"approved_at"`
-	PlanID        *int64      `json:"plan_id"`
-	Tasks         []DraftTask `json:"tasks"`
-	Edges         []DraftEdge `json:"edges"`
-	Roots         []string    `json:"roots"`
-	CreatedAt     int64       `json:"created_at"`
-	UpdatedAt     int64       `json:"updated_at"`
+	ID                int64       `json:"id"`
+	Project           string      `json:"project"`
+	AuthorID          int64       `json:"author_id"`
+	Policy            PlanPolicy  `json:"policy"`
+	Outcome           string      `json:"outcome"`
+	Scenario          string      `json:"scenario"`
+	TargetEnvironment string      `json:"target_environment"`
+	VisibleChange     *string     `json:"visible_change"`
+	VisualReview      bool        `json:"visual_review"`
+	RevealKey         *string     `json:"reveal_key"`
+	Version           int64       `json:"version"`
+	State             string      `json:"state"`
+	ApprovedBy        *int64      `json:"approved_by"`
+	ApprovedAt        *int64      `json:"approved_at"`
+	PlanID            *int64      `json:"plan_id"`
+	Tasks             []DraftTask `json:"tasks"`
+	Edges             []DraftEdge `json:"edges"`
+	Roots             []string    `json:"roots"`
+	CreatedAt         int64       `json:"created_at"`
+	UpdatedAt         int64       `json:"updated_at"`
 }
 
 type DraftInput struct {
-	Project       string
-	Outcome       string
-	Scenario      string
-	VisibleChange *string
-	VisualReview  bool
-	RevealKey     string
-	Tasks         []DraftTask
-	Edges         []DraftEdge
+	Project           string
+	Outcome           string
+	Scenario          string
+	TargetEnvironment string
+	VisibleChange     *string
+	VisualReview      bool
+	RevealKey         string
+	Tasks             []DraftTask
+	Edges             []DraftEdge
 }
 
 type PlanDraftStore interface {
