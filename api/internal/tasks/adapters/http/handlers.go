@@ -251,6 +251,7 @@ func (h *Handler) Projects(w nethttp.ResponseWriter, r *nethttp.Request) {
 			RequiredChecks: required,
 			AutoDispatch:   project.AutoDispatch,
 			DispatchLimit:  project.DispatchLimit,
+			AutoMerge:      project.AutoMerge,
 		})
 	}
 	httpserver.WriteJSON(w, nethttp.StatusOK, items)
@@ -765,6 +766,7 @@ type projectJSON struct {
 	RequiredChecks []string  `json:"required_checks"`
 	AutoDispatch   bool      `json:"auto_dispatch"`
 	DispatchLimit  int       `json:"dispatch_limit"`
+	AutoMerge      bool      `json:"auto_merge"`
 }
 
 type cardsJSON struct {

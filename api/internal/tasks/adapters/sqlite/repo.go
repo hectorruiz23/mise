@@ -257,7 +257,7 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 	label := "list projects"
 	query := `
 		SELECT p.key, p.name, p.is_public, p.sort_order, p.description, p.repo_url,
-		       p.demo_url, p.public_state, p.required_checks, p.auto_dispatch, p.dispatch_limit,
+		       p.demo_url, p.public_state, p.required_checks, p.auto_dispatch, p.dispatch_limit, p.auto_merge,
 		       COALESCE(t.total, 0), COALESCE(t.cerradas, 0), COALESCE(t.en_curso, 0),
 		       t.ultima
 		FROM projects p
@@ -299,6 +299,7 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 			requiredRaw   string
 			autoDispatch  int
 			dispatchLimit int
+			autoMerge     int
 			total         int
 			cerradas      int
 			enCurso       int
@@ -306,7 +307,7 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 		)
 		if err := rows.Scan(
 			&project.Key, &project.Name, &isPublic, &project.SortOrder,
-			&description, &repoURL, &demoURL, &publicState, &requiredRaw, &autoDispatch, &dispatchLimit,
+			&description, &repoURL, &demoURL, &publicState, &requiredRaw, &autoDispatch, &dispatchLimit, &autoMerge,
 			&total, &cerradas, &enCurso, &lastActive,
 		); err != nil {
 			return nil, fmt.Errorf("%s: scan: %w", label, err)
@@ -315,6 +316,7 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 		project.IsPublic = isPublic == 1
 		project.AutoDispatch = autoDispatch == 1
 		project.DispatchLimit = dispatchLimit
+		project.AutoMerge = autoMerge == 1
 		project.RequiredChecks, err = decodeChecks(requiredRaw)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", label, err)

@@ -15,15 +15,23 @@ type PlanProof struct {
 	RunID      int64  `json:"run_id"`
 	Attempt    int64  `json:"attempt"`
 	VerifiedAt int64  `json:"verified_at"`
+	Origin     string `json:"origin"`
+}
+
+type PlanDeployment struct {
+	Environment string `json:"environment"`
+	Revision    string `json:"revision"`
+	ObservedAt  int64  `json:"observed_at"`
 }
 
 type PlanNode struct {
-	Key        string     `json:"task_key"`
-	Title      string     `json:"title"`
-	State      string     `json:"state"`
-	Acceptance *string    `json:"acceptance"`
-	WaitingOn  []string   `json:"waiting_on"`
-	Proof      *PlanProof `json:"proof"`
+	Key         string           `json:"task_key"`
+	Title       string           `json:"title"`
+	State       string           `json:"state"`
+	Acceptance  *string          `json:"acceptance"`
+	WaitingOn   []string         `json:"waiting_on"`
+	Proof       *PlanProof       `json:"proof"`
+	Deployments []PlanDeployment `json:"deployments"`
 }
 
 type PlanGraph struct {
