@@ -239,11 +239,16 @@ func (h *Handler) Projects(w nethttp.ResponseWriter, r *nethttp.Request) {
 
 	items := make([]projectJSON, 0, len(projects))
 	for _, project := range projects {
+		required := project.RequiredChecks
+		if required == nil {
+			required = []string{}
+		}
 		items = append(items, projectJSON{
-			Key:   project.Key,
-			Name:  project.Name,
-			State: project.State,
-			Cards: cardsJSON{Total: project.Cards.Total, Done: project.Cards.Done},
+			Key:            project.Key,
+			Name:           project.Name,
+			State:          project.State,
+			Cards:          cardsJSON{Total: project.Cards.Total, Done: project.Cards.Done},
+			RequiredChecks: required,
 		})
 	}
 	httpserver.WriteJSON(w, nethttp.StatusOK, items)
@@ -293,11 +298,12 @@ func (h *Handler) Detail(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 
 	body := detailJSON{
-		Task:       taskOf(detail.Task),
-		Movements:  movementsOf(detail.Movements),
-		Leases:     leasesOf(detail.Leases),
-		Deliveries: deliveriesOf(detail.Deliveries),
-		Comments:   commentsOf(detail.Comments),
+		Task:        taskOf(detail.Task),
+		Movements:   movementsOf(detail.Movements),
+		Leases:      leasesOf(detail.Leases),
+		Deliveries:  deliveriesOf(detail.Deliveries),
+		Comments:    commentsOf(detail.Comments),
+		Submissions: submissionsOf(detail.Submissions),
 	}
 	if isViewer(principal) {
 		body = redactedDetail(body)
@@ -446,11 +452,11 @@ func (h *Handler) CreateDelivery(w nethttp.ResponseWriter, r *nethttp.Request) {
 	var task domain.Task
 	var delivery domain.Delivery
 	if items != nil {
-		task, delivery, err = h.service.DeliverItems(r.Context(), r.PathValue("key"),
-			actorOf(principal), body.LeaseID, body.Summary, items, body.PRURL)
+		task, delivery, err = h.service.DeliverRevision(r.Context(), r.PathValue("key"),
+			actorOf(principal), body.LeaseID, body.Summary, nil, items, body.PRURL, body.HeadSHA)
 	} else {
-		task, delivery, err = h.service.Deliver(r.Context(), r.PathValue("key"),
-			actorOf(principal), body.LeaseID, body.Summary, evidence, body.PRURL)
+		task, delivery, err = h.service.DeliverRevision(r.Context(), r.PathValue("key"),
+			actorOf(principal), body.LeaseID, body.Summary, evidence, nil, body.PRURL, body.HeadSHA)
 	}
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
@@ -750,10 +756,11 @@ type taskJSON struct {
 }
 
 type projectJSON struct {
-	Key   string    `json:"key"`
-	Name  string    `json:"name"`
-	State string    `json:"state"`
-	Cards cardsJSON `json:"cards"`
+	Key            string    `json:"key"`
+	Name           string    `json:"name"`
+	State          string    `json:"state"`
+	Cards          cardsJSON `json:"cards"`
+	RequiredChecks []string  `json:"required_checks"`
 }
 
 type cardsJSON struct {
@@ -767,11 +774,12 @@ type createProjectRequest struct {
 }
 
 type detailJSON struct {
-	Task       taskJSON       `json:"task"`
-	Movements  []movementJSON `json:"movements"`
-	Leases     []leaseJSON    `json:"leases"`
-	Deliveries []deliveryJSON `json:"deliveries"`
-	Comments   []commentJSON  `json:"comments"`
+	Task        taskJSON         `json:"task"`
+	Movements   []movementJSON   `json:"movements"`
+	Leases      []leaseJSON      `json:"leases"`
+	Deliveries  []deliveryJSON   `json:"deliveries"`
+	Comments    []commentJSON    `json:"comments"`
+	Submissions []submissionJSON `json:"submissions"`
 }
 
 type movementJSON struct {
@@ -804,6 +812,7 @@ type deliveryJSON struct {
 	Evidence      []string           `json:"evidence"`
 	EvidenceItems []evidenceItemJSON `json:"evidence_items"`
 	PRURL         *string            `json:"pr_url"`
+	HeadSHA       *string            `json:"head_sha"`
 	CreatedAt     int64              `json:"created_at"`
 	ActorID       int64              `json:"actor_id"`
 	Actor         actorJSON          `json:"actor"`
@@ -826,6 +835,7 @@ type actorJSON struct {
 
 type deliveryRequest struct {
 	LeaseID       *int64          `json:"lease_id"`
+	HeadSHA       *string         `json:"head_sha"`
 	Summary       string          `json:"summary"`
 	Evidence      json.RawMessage `json:"evidence"`
 	EvidenceItems json.RawMessage `json:"evidence_items"`
@@ -943,6 +953,7 @@ func deliveryOf(delivery domain.Delivery) deliveryJSON {
 		Evidence:      delivery.Evidence,
 		EvidenceItems: evidenceItemsOf(delivery),
 		PRURL:         delivery.PRURL,
+		HeadSHA:       delivery.HeadSHA,
 		CreatedAt:     delivery.CreatedAt,
 		ActorID:       delivery.ActorID,
 		Actor:         actorOfDomain(delivery.Actor),

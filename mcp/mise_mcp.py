@@ -203,6 +203,8 @@ def tool_specs() -> list[dict]:
                                         "required": ["label", "raw"],
                                         "additionalProperties": False},
                               "description": "Structured evidence with a short label and the raw proof"},
+           "head_sha": {"type": "string", "pattern": "^[0-9a-fA-F]{40}$",
+                        "description": "Full head commit of the pull request; required when the project has required checks."},
            "pr_url": {"type": "string", "maxLength": 500,
                       "description": "Optional absolute http(s) link to the pull request behind the work"},
            "lease_id": {"type": "integer", "description": "Omit to let the server use your live lease"}},
@@ -293,6 +295,8 @@ def run_tool(api: Api, name: str, args: dict) -> dict:
             body["evidence"] = list(args["evidence"])
         if args.get("pr_url"):
             body["pr_url"] = args["pr_url"]
+        if args.get("head_sha"):
+            body["head_sha"] = args["head_sha"]
         return _envelope(api.call("POST", f"/api/tasks/{args['key']}/deliveries", body))
 
     if name == "comment":

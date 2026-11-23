@@ -88,11 +88,12 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | `GET /api/build` | Revision, repository and tree state of the binary that serves |
 | `GET /api/me` | The authenticated actor |
 | `GET /api/public/board` | Public snapshot for the portfolio. Public |
-| `GET /api/projects` | Projects and their keys |
+| `GET /api/projects` | Projects and their keys, with their required checks |
+| `PATCH /api/projects/{key}` | Set the required checks of a project. Human only |
 | `GET /api/board` | Five columns keyed by state, plus counts |
 | `GET /api/tasks?state=&project=&limit=` | One page, cursor in `next_cursor` |
 | `POST /api/tasks` | Create (`Idempotency-Key` required, lands in `backlog`) |
-| `GET /api/tasks/{key}` | Card with movements, leases, deliveries and comments |
+| `GET /api/tasks/{key}` | Card with movements, leases, deliveries, comments and submissions |
 | `PATCH /api/tasks/{key}` | Edit or move (`If-Match: <version>` required) |
 | `GET /api/tasks/{key}/movements` | Movement history |
 | `GET /api/tasks/{key}/leases` | Live and past leases |
@@ -100,7 +101,8 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | `PATCH /api/tasks/{key}/leases/{id}` | Renew |
 | `DELETE /api/tasks/{key}/leases/{id}` | Release |
 | `GET /api/tasks/{key}/deliveries` | Deliveries with their evidence |
-| `POST /api/tasks/{key}/deliveries` | Hand the work back; moves the card to `review` |
+| `POST /api/tasks/{key}/submissions` | Link the card to a pull request and a revision, and read the check verdict |
+| `POST /api/tasks/{key}/deliveries` | Hand the work back; moves the card to `review` when the checks pass |
 | `GET /api/tasks/{key}/anchors` | Pull request state and checks, cached and budgeted |
 | `POST /api/dependency-plans` | Approve two backlog tasks; a verified merge releases the second. Human only |
 | `GET /api/dependency-plans/{firstTask}` | Approval, policy and merge proof of a plan |

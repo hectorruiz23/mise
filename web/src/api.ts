@@ -51,6 +51,8 @@ const MESSAGES: Record<string, string> = {
   evidence_required: 'A delivery is required before a task can move to review.',
   lease_required: 'This action needs a live lease owned by the actor.',
   lease_conflict: 'Another actor already holds a live lease on this task.',
+  checks_failed: 'The delivered revision failed its required checks. Read the failed checks and deliver again.',
+  checks_pending: 'The checks for this revision have not finished. Wait and deliver again.',
   idempotency_conflict: 'This retry reused the key with a different payload.',
   signup_pending: 'This signup request is still pending approval.',
   signup_consumed: 'This signup request has already been used.',

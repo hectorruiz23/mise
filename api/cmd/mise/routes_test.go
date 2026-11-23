@@ -120,6 +120,8 @@ func TestMutationsStillRequireACredential(t *testing.T) {
 		{http.MethodDelete, "/api/tasks/NOPE-1/leases/1"},
 		{http.MethodPost, "/api/tasks/NOPE-1/deliveries"},
 		{http.MethodPost, "/api/tasks/NOPE-1/comments"},
+		{http.MethodPatch, "/api/projects/NOPE-1"},
+		{http.MethodPost, "/api/tasks/NOPE-1/submissions"},
 		{http.MethodPost, "/api/dependency-plans"},
 		{http.MethodGet, "/api/dependency-plans/NOPE-1"},
 		{http.MethodPost, "/api/dependency-plans/NOPE-1/cancel"},

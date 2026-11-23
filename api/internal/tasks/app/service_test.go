@@ -692,3 +692,27 @@ func TestDeliverHumanWithoutLease(t *testing.T) {
 		t.Fatalf("lease_id = %v, want nil", *delivery.LeaseID)
 	}
 }
+
+func (r *fakeRepo) ProjectChecks(_ context.Context, _ string) ([]string, error) {
+	return nil, nil
+}
+
+func (r *fakeRepo) SetProjectChecks(_ context.Context, _ string, _ []string, _ int64) error {
+	return nil
+}
+
+func (r *fakeRepo) UpsertSubmission(_ context.Context, s domain.Submission) (domain.Submission, error) {
+	return s, nil
+}
+
+func (r *fakeRepo) MarkSubmissionDelivered(_ context.Context, _ int64, _ int64) error {
+	return nil
+}
+
+func (r *fakeRepo) CountFailedAttempts(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (r *fakeRepo) ListSubmissions(_ context.Context, _ string, _ app.ReadScope) ([]domain.Submission, error) {
+	return nil, nil
+}

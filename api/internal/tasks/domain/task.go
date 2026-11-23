@@ -94,6 +94,7 @@ type Delivery struct {
 	Evidence      []string
 	EvidenceItems []EvidenceItem
 	PRURL         *string
+	HeadSHA       *string
 	CreatedAt     int64
 	ActorID       int64
 	Actor         Actor
