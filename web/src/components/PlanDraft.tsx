@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../api'
-import { STATE_LABELS } from '../types'
 import type { Me, PlanDraft } from '../types'
 
 type Props = {
@@ -32,12 +31,10 @@ export function PlanDraftPage({ me, draftID, onBrowseBoard }: Props) {
     setApproving(true)
     setNotice('')
     try {
-      const approved = await api.approvePlanDraft(current.id, current.version)
-      setDraft(approved)
-      setNotice(`Plan #${approved.plan_id} is running. The tasks can be taken from now on.`)
+      setDraft(await api.approvePlanDraft(current.id, current.version))
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'stale_version') {
-        setNotice('This proposal changed after you opened it. Review the newer version and approve again.')
+        setNotice('This proposal changed after you opened it. Read the newer version and approve again.')
         await load()
       } else {
         setNotice(caught instanceof ApiError ? caught.message : 'Cannot reach the server.')
@@ -65,98 +62,113 @@ export function PlanDraftPage({ me, draftID, onBrowseBoard }: Props) {
     )
   }
 
-  const byKey = new Map(draft.tasks.map(task => [task.key, task]))
+  const approved = draft.state === 'approved'
+  const discarded = draft.state === 'discarded'
   const waiting = new Map<string, string[]>()
   for (const edge of draft.edges) {
     waiting.set(edge.to, [...(waiting.get(edge.to) ?? []), edge.from])
   }
-  const approved = draft.state === 'approved'
-  const discarded = draft.state === 'discarded'
 
   return (
     <main className="contenedor principal">
-      <section className="abertura">
+      <header className="propuesta-cabecera">
         <h1>Proposal #{draft.id}</h1>
         <p className="dato">
-          {draft.project} · version {draft.version} · {approved ? 'approved' : discarded ? 'discarded' : 'draft'}
+          {draft.project} · version {draft.version} ·{' '}
+          {approved ? 'approved' : discarded ? 'discarded' : 'draft'}
         </p>
+      </header>
 
-        <h2>What ships</h2>
-        <p>{draft.outcome}</p>
+      {notice && (
+        <p className="propuesta-aviso" role="status">
+          {notice}
+        </p>
+      )}
 
-        {draft.visual_review && (
-          <div className="atencion">
-            <h2>This changes what you see</h2>
-            <p>{draft.visible_change}</p>
-            <p>
-              The work becomes visible only through <strong>{describeReveal(draft, byKey)}</strong>. Its pull
-              request is never merged automatically, whatever its checks say.
+      <section className="abertura">
+        <div className="propuesta-cuerpo">
+          <div>
+            <p className="propuesta-etiqueta">What ships</p>
+            <p className="propuesta-resultado">{draft.outcome}</p>
+          </div>
+
+          <div>
+            <h2>Tasks</h2>
+            <ol className="propuesta-tareas">
+              {draft.tasks.map(task => {
+                const waits = waiting.get(task.key) ?? []
+                const reveals = task.key === draft.reveal_key
+                return (
+                  <li className="propuesta-tarea" key={task.key}>
+                    <p className="propuesta-titulo">
+                      <code className="propuesta-clave">{task.key}</code>{' '}
+                      <strong>{task.title}</strong>
+                      {reveals && <span className="propuesta-marca">reveals the change</span>}
+                    </p>
+                    <p className="propuesta-dependencia">
+                      {waits.length > 0
+                        ? `Waits for ${joinKeys(waits)}`
+                        : approved
+                          ? 'No prerequisites'
+                          : 'Can start together after approval'}
+                    </p>
+                    {task.acceptance && <p className="propuesta-criterios">{task.acceptance}</p>}
+                    {reveals && draft.visual_review && (
+                      <div className="propuesta-revision">
+                        <p>{draft.visible_change}</p>
+                        <p>You approve this task’s pull request on GitHub before it can be merged.</p>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ol>
+          </div>
+
+          <div>
+            <h2>Completion check</h2>
+            <p className="propuesta-comando">
+              <code>{draft.scenario}</code>
+            </p>
+            <p className="propuesta-criterios">
+              It runs over the integrated application, and the plan closes once the merged revision is
+              serving in every environment.
             </p>
           </div>
-        )}
 
-        <h2>Tasks</h2>
-        <ul>
-          {draft.tasks.map(task => {
-            const waits = waiting.get(task.key) ?? []
-            return (
-              <li key={task.key}>
-                <strong>{task.title}</strong>{' '}
-                <span className="dato">
-                  {waits.length === 0 ? 'can start now' : `waits for ${waits.join(', ')}`}
-                  {task.key === draft.reveal_key ? ' · reveals the change' : ''}
-                </span>
-                {task.acceptance && <p>{task.acceptance}</p>}
-              </li>
-            )
-          })}
-        </ul>
-
-        <h2>How completion is established</h2>
-        <p>
-          <code>{draft.scenario}</code> over the integrated application, the merged revision serving in every
-          environment, and this approval.
-        </p>
-
-        {notice && (
-          <p className="aviso" role="status">
-            {notice}
-          </p>
-        )}
-
-        {me.kind === 'human' && !approved && !discarded && (
-          <div className="acciones-mover">
-            <button
-              type="button"
-              className="primario"
-              disabled={approving}
-              onClick={() => void approve(draft)}
-            >
-              {approving ? 'Approving…' : `Approve version ${draft.version}`}
-            </button>
-            <p className="dato">No task exists until you approve: nothing can be taken before this.</p>
+          <div className="propuesta-pie">
+            {approved ? (
+              <>
+                <p>Approved. The cards exist and the plan is running.</p>
+                <button type="button" className="secundario" onClick={onBrowseBoard}>
+                  Back to the board
+                </button>
+              </>
+            ) : discarded ? (
+              <p className="dato">This proposal was discarded. Nothing was created.</p>
+            ) : me.kind === 'human' ? (
+              <>
+                <p className="dato">Tasks are created only when you approve this version.</p>
+                <button
+                  type="button"
+                  className="primario"
+                  disabled={approving}
+                  onClick={() => void approve(draft)}
+                >
+                  {approving ? 'Approving…' : `Approve version ${draft.version}`}
+                </button>
+              </>
+            ) : (
+              <p className="dato">Only the owner can approve this proposal.</p>
+            )}
           </div>
-        )}
-
-        {approved && (
-          <p className="aviso" role="status">
-            Approved. The cards exist and the plan is running.{' '}
-            <button type="button" className="secundario" onClick={onBrowseBoard}>
-              Back to the board
-            </button>
-          </p>
-        )}
+        </div>
       </section>
     </main>
   )
 }
 
-function describeReveal(draft: PlanDraft, byKey: Map<string, PlanDraft['tasks'][number]>): string {
-  if (!draft.reveal_key) return 'the revealing task'
-  const task = byKey.get(draft.reveal_key)
-  return task ? task.title : draft.reveal_key
-}
-
-export function stateLabel(state: string): string {
-  return (STATE_LABELS as Record<string, string>)[state] ?? state
+function joinKeys(keys: string[]): string {
+  if (keys.length <= 1) return keys.join('')
+  return `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`
 }
