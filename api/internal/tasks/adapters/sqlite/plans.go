@@ -74,10 +74,7 @@ func (r *Repo) ApproveGraph(
 			projects[project] = struct{}{}
 			var taken bool
 			if err := conn.QueryRowContext(ctx, `SELECT EXISTS(
-				SELECT 1 FROM plan_nodes WHERE task_key = ?
-				UNION ALL
-				SELECT 1 FROM dependency_plans WHERE first_task = ? OR next_task = ?)`,
-				key, key, key).Scan(&taken); err != nil {
+				SELECT 1 FROM plan_nodes WHERE task_key = ?)`, key).Scan(&taken); err != nil {
 				return err
 			}
 			if taken {
