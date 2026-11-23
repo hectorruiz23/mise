@@ -16,7 +16,8 @@ var _ app.DependencyPlans = (*Repo)(nil)
 
 const planQuery = `
 	SELECT p.first_task, p.next_task, p.approved_by, p.approved_at,
-	       p.repository, p.branch, p.workflow_id, p.proof, d.id, d.pr_url, d.evidence
+	       p.repository, p.branch, p.workflow_id, p.proof, p.cancelled_by, p.cancelled_at,
+	       d.id, d.pr_url, d.evidence
 	FROM dependency_plans p
 	JOIN tasks t ON t.key = p.first_task
 	LEFT JOIN deliveries d ON t.state IN ('review','done') AND d.id = (
@@ -27,15 +28,17 @@ const planQuery = `
 func readPlan(row scanner) (app.DependencyPlan, error) {
 	var plan app.DependencyPlan
 	var proof, prURL, evidence sql.NullString
-	var deliveryID sql.NullInt64
+	var deliveryID, cancelledBy, cancelledAt sql.NullInt64
 	err := row.Scan(&plan.FirstTask, &plan.NextTask, &plan.ApprovedBy, &plan.ApprovedAt,
-		&plan.Policy.Repository, &plan.Policy.Branch, &plan.Policy.WorkflowID, &proof, &deliveryID, &prURL, &evidence)
+		&plan.Policy.Repository, &plan.Policy.Branch, &plan.Policy.WorkflowID, &proof, &cancelledBy, &cancelledAt,
+		&deliveryID, &prURL, &evidence)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return plan, &domain.RuleError{Code: domain.CodeNotFound, Msg: "dependency plan not found"}
 		}
 		return plan, err
 	}
+	plan.CancelledBy, plan.CancelledAt = cancelledBy.Int64, cancelledAt.Int64
 	if proof.Valid {
 		err = json.Unmarshal([]byte(proof.String), &plan.Proof)
 		return plan, err
@@ -74,7 +77,8 @@ func (r *Repo) Plan(ctx context.Context, first string) (app.DependencyPlan, erro
 }
 
 func (r *Repo) PendingPlans(ctx context.Context) ([]app.DependencyPlan, error) {
-	rows, err := r.db.QueryContext(ctx, planQuery+" WHERE p.proof IS NULL AND d.pr_url IS NOT NULL ORDER BY p.first_task")
+	rows, err := r.db.QueryContext(ctx, planQuery+
+		" WHERE p.proof IS NULL AND p.cancelled_at IS NULL AND d.pr_url IS NOT NULL ORDER BY p.first_task")
 	if err != nil {
 		return nil, err
 	}
@@ -114,6 +118,9 @@ func (r *Repo) ApprovePlan(ctx context.Context, actor domain.Actor, first, next 
 			if err != nil {
 				return err
 			}
+			if stored.CancelledAt > 0 {
+				return planConflict("the dependency plan was cancelled")
+			}
 			if stored.FirstTask != first || stored.NextTask != next || stored.Policy != policy || stored.ApprovedBy != actor.ID {
 				return planConflict("a task already belongs to another approved plan")
 			}
@@ -146,6 +153,33 @@ func (r *Repo) ApprovePlan(ctx context.Context, actor domain.Actor, first, next 
 	return plan, err
 }
 
+func (r *Repo) CancelPlan(ctx context.Context, actor domain.Actor, first string, now int64) (app.DependencyPlan, error) {
+	var plan app.DependencyPlan
+	if actor.Kind != domain.Human {
+		return plan, &domain.RuleError{Code: domain.CodeForbidden, Msg: "only a human can cancel a plan"}
+	}
+	err := r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
+		var err error
+		plan, err = readPlan(conn.QueryRowContext(ctx, planQuery+" WHERE p.first_task = ?", first))
+		if err != nil {
+			return err
+		}
+		if plan.Proof != nil {
+			return planConflict("a released dependency cannot be cancelled")
+		}
+		if plan.CancelledAt > 0 {
+			return nil
+		}
+		if _, err := conn.ExecContext(ctx, `UPDATE dependency_plans SET cancelled_by = ?, cancelled_at = ?
+			WHERE first_task = ? AND proof IS NULL AND cancelled_at IS NULL`, actor.ID, now, first); err != nil {
+			return err
+		}
+		plan.CancelledBy, plan.CancelledAt = actor.ID, now
+		return nil
+	})
+	return plan, err
+}
+
 func readyPlanTask(ctx context.Context, conn *sql.Conn, key string, actorID, now int64, reason string) error {
 	var version int64
 	err := conn.QueryRowContext(ctx, `UPDATE tasks SET state='ready', version=version+1, updated_at=?
@@ -168,6 +202,9 @@ func (r *Repo) ReleasePlan(ctx context.Context, first string, proof app.MergePro
 		plan, err = readPlan(conn.QueryRowContext(ctx, planQuery+" WHERE p.first_task = ?", first))
 		if err != nil {
 			return err
+		}
+		if plan.CancelledAt > 0 {
+			return planConflict("the dependency plan was cancelled")
 		}
 		if plan.Proof != nil {
 			if *plan.Proof == proof {

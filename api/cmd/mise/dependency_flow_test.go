@@ -47,7 +47,7 @@ func TestVerifiedDependencyFlow(t *testing.T) {
 	usersService := usersapp.New(userssqlite.New(database), clock)
 	owner := domain.Actor{ID: 1, Kind: domain.Human, Name: "Owner"}
 	agent := domain.Actor{ID: 2, Kind: domain.Agent, Name: "Agent"}
-	for _, title := range []string{"Create a project", "Rename a project"} {
+	for _, title := range []string{"Create a project", "Rename a project", "Delete a project", "Archive a project"} {
 		if _, _, err := tasks.Create(ctx, app.CreateParams{ProjectKey: "MI", Title: title, Actor: owner}); err != nil {
 			t.Fatal(err)
 		}
@@ -60,8 +60,7 @@ func TestVerifiedDependencyFlow(t *testing.T) {
 	}
 	policy := app.PlanPolicy{Repository: "example/project", Branch: "main", WorkflowID: 15}
 	plans := taskshttp.NewDependencyPlans(repo, policy, clock)
-	server.HandleFunc("POST /api/dependency-plans", false, plans.Approve)
-	server.HandleFunc("GET /api/dependency-plans/{firstTask}", false, plans.Get)
+	registerRoutes(server, taskshttp.New(tasks), usershttp.New(usersService, origin), plans)
 	call := func(method, path, body, token string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, path, strings.NewReader(body))
 		req.Header.Set("Origin", origin)
@@ -174,5 +173,39 @@ func TestVerifiedDependencyFlow(t *testing.T) {
 	}
 	if _, _, err := tasks.Acquire(ctx, "MI-2", agent); err != nil {
 		t.Fatalf("claim after verified integration: %v", err)
+	}
+
+	request("POST", "/api/dependency-plans", `{"prerequisite_key":"MI-3","dependent_key":"MI-4"}`)
+	cancelled := request("POST", "/api/dependency-plans/MI-3/cancel", "")
+	var cancellation struct {
+		State       string `json:"state"`
+		CancelledBy int64  `json:"cancelled_by"`
+		CancelledAt int64  `json:"cancelled_at"`
+	}
+	if err := json.Unmarshal(cancelled.Body.Bytes(), &cancellation); err != nil {
+		t.Fatal(err)
+	}
+	if cancellation.State != "cancelled" || cancellation.CancelledBy != owner.ID {
+		t.Fatalf("unexpected cancellation: %s", cancelled.Body)
+	}
+	if err := worker.poll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	recorded := request("GET", "/api/dependency-plans/MI-3", "")
+	if err := json.Unmarshal(recorded.Body.Bytes(), &cancellation); err != nil {
+		t.Fatal(err)
+	}
+	if cancellation.State != "cancelled" || cancellation.CancelledAt == 0 {
+		t.Fatalf("cancellation was not recorded: %s", recorded.Body)
+	}
+	waiting, err := tasks.Movements(ctx, owner, "MI-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(waiting) != 1 {
+		t.Fatalf("a cancelled plan released the dependent task: %+v", waiting)
+	}
+	if _, err := tasks.Move(ctx, "MI-4", domain.Ready, "", owner, waiting[0].TaskVersion, true); err != nil {
+		t.Fatalf("the dependent task is not manageable after the cancellation: %v", err)
 	}
 }

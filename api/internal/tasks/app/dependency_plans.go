@@ -22,19 +22,22 @@ type MergeProof struct {
 }
 
 type DependencyPlan struct {
-	FirstTask  string      `json:"first_task"`
-	NextTask   string      `json:"next_task"`
-	ApprovedBy int64       `json:"approved_by"`
-	ApprovedAt int64       `json:"approved_at"`
-	Policy     PlanPolicy  `json:"policy"`
-	DeliveryID int64       `json:"delivery_id,omitempty"`
-	PRURL      string      `json:"pr_url,omitempty"`
-	HeadSHA    string      `json:"head_sha,omitempty"`
-	Proof      *MergeProof `json:"proof"`
+	FirstTask   string      `json:"first_task"`
+	NextTask    string      `json:"next_task"`
+	ApprovedBy  int64       `json:"approved_by"`
+	ApprovedAt  int64       `json:"approved_at"`
+	Policy      PlanPolicy  `json:"policy"`
+	DeliveryID  int64       `json:"delivery_id,omitempty"`
+	PRURL       string      `json:"pr_url,omitempty"`
+	HeadSHA     string      `json:"head_sha,omitempty"`
+	Proof       *MergeProof `json:"proof"`
+	CancelledBy int64       `json:"cancelled_by,omitempty"`
+	CancelledAt int64       `json:"cancelled_at,omitempty"`
 }
 
 type DependencyPlans interface {
 	ApprovePlan(context.Context, domain.Actor, string, string, PlanPolicy, int64) (DependencyPlan, error)
+	CancelPlan(context.Context, domain.Actor, string, int64) (DependencyPlan, error)
 	Plan(context.Context, string) (DependencyPlan, error)
 	PendingPlans(context.Context) ([]DependencyPlan, error)
 	ReleasePlan(context.Context, string, MergeProof, int64) (DependencyPlan, error)

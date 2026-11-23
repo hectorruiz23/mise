@@ -8,7 +8,11 @@ CREATE TABLE dependency_plans (
     workflow_id INTEGER NOT NULL CHECK (workflow_id > 0),
     previous_delivery_id INTEGER NOT NULL,
     proof TEXT CHECK (proof IS NULL OR json_valid(proof)),
-    CHECK (first_task <> next_task)
+    cancelled_by INTEGER REFERENCES users(id),
+    cancelled_at INTEGER,
+    CHECK (first_task <> next_task),
+    CHECK ((cancelled_by IS NULL) = (cancelled_at IS NULL)),
+    CHECK (proof IS NULL OR cancelled_at IS NULL)
 );
 
 CREATE UNIQUE INDEX dependency_plans_verified_merge

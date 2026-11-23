@@ -109,3 +109,55 @@ func TestDependencyPlanOwnership(t *testing.T) {
 	_, err = repo.ApprovePlan(ctx, human(), a.Key, b.Key, policy, testNow)
 	wantRuleCode(t, err, domain.CodeInvalidTransition)
 }
+
+func TestDependencyPlanCancellation(t *testing.T) {
+	ctx := context.Background()
+	database, _ := openMigrated(t)
+	repo := sqlite.New(database)
+	service := newService(database, &manualClock{now: testNow})
+	a, _ := createTask(t, service, app.CreateParams{Title: "Create a project"})
+	b, _ := createTask(t, service, app.CreateParams{Title: "Rename a project"})
+	policy := app.PlanPolicy{Repository: "owner/project", Branch: "main", WorkflowID: 72}
+	if _, err := repo.ApprovePlan(ctx, human(), a.Key, b.Key, policy, testNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := service.Acquire(ctx, a.Key, agent()); err != nil {
+		t.Fatal(err)
+	}
+	head := strings.Repeat("a", 40)
+	prURL, label := "https://github.com/owner/project/pull/72", "head_sha"
+	_, delivery, err := service.DeliverItems(ctx, a.Key, agent(), nil, "Working implementation",
+		[]domain.EvidenceItem{{Label: &label, Raw: head}}, &prURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = repo.CancelPlan(ctx, agent(), a.Key, testNow)
+	wantRuleCode(t, err, domain.CodeForbidden)
+	plan, err := repo.CancelPlan(ctx, human(), a.Key, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.CancelledAt != testNow || plan.CancelledBy != human().ID {
+		t.Fatalf("cancellation was not recorded: %+v", plan)
+	}
+	if plans, err := repo.PendingPlans(ctx); err != nil || len(plans) != 0 {
+		t.Fatalf("cancelled plan is still pending: %+v, %v", plans, err)
+	}
+	proof := app.MergeProof{DeliveryID: delivery.ID, PRURL: prURL, HeadSHA: head,
+		MergeSHA: strings.Repeat("b", 40), RunID: 9, Attempt: 1}
+	_, err = repo.ReleasePlan(ctx, a.Key, proof, testNow)
+	wantRuleCode(t, err, domain.CodeInvalidTransition)
+	movements, err := service.Movements(ctx, human(), b.Key)
+	if err != nil || len(movements) != 1 {
+		t.Fatalf("the dependent task left backlog after the cancellation: %+v, %v", movements, err)
+	}
+	if _, err := repo.CancelPlan(ctx, human(), a.Key, testNow); err != nil {
+		t.Fatalf("repeated cancellation: %v", err)
+	}
+	if _, err := repo.ApprovePlan(ctx, human(), a.Key, b.Key, policy, testNow); err == nil {
+		t.Fatal("a cancelled plan was approved again")
+	}
+	if _, err := service.Move(ctx, b.Key, domain.Ready, "", human(), movements[0].TaskVersion, true); err != nil {
+		t.Fatalf("the dependent task is not manageable after the cancellation: %v", err)
+	}
+}

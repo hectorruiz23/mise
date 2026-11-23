@@ -100,9 +100,17 @@ A human account approves two backlog tasks from the same project by sending
 `{"prerequisite_key":"MI-1","dependent_key":"MI-2"}` to `POST /api/dependency-plans`; an agent token is
 refused with `403` and an unset policy answers `409`. The first task becomes ready. Its agent delivers
 the PR URL and exactly one `evidence_items` entry labeled `head_sha` whose raw value is the full
-40-character PR head commit. Mise checks GitHub in the background. When the delivered revision has
-merged into the approved branch and its merge commit has passed the approved workflow, the second task
-becomes ready to lease. Read the plan at `GET /api/dependency-plans/MI-1`.
+40-character PR head commit. Mise verifies the merge and the checks of the pull request named in that
+delivery; binding a task to its pull request independently is a later slice. Mise checks GitHub in the
+background. When the delivered revision has merged into the approved branch and its merge commit has
+passed the approved workflow, the second task becomes ready to lease. The evidence has to sit on the
+latest delivery of the prerequisite, and the prerequisite has to be in `review` or `done` when Mise
+polls. Read the plan at `GET /api/dependency-plans/MI-1`.
+
+The owner cancels a waiting plan with `POST /api/dependency-plans/MI-1/cancel`, which records who
+cancelled it and when. The dependent task stays in backlog and can be moved, edited and leased again;
+a verification that arrives afterwards cannot release it, and the cancelled plan stays as the record of
+that pair.
 
 `MISE_PUBLIC_ORIGIN` does two jobs: it decides whether the session cookie carries `Secure`, and it is
 what the CSRF check compares against the request's `Origin` header. With it empty, every `POST`,

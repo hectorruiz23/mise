@@ -412,7 +412,7 @@ func (r *Repo) UpdateTask(ctx context.Context, t domain.Task, m domain.Movement,
 		if m.ToState != "" && m.ToState != domain.Backlog {
 			var waiting bool
 			err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dependency_plans
-				WHERE next_task = ? AND proof IS NULL)`, t.Key).Scan(&waiting)
+				WHERE next_task = ? AND proof IS NULL AND cancelled_at IS NULL)`, t.Key).Scan(&waiting)
 			if err != nil {
 				return err
 			}

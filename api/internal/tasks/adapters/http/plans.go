@@ -67,6 +67,23 @@ func (h *DependencyPlans) Get(w http.ResponseWriter, r *http.Request) {
 	httpserver.WriteJSON(w, http.StatusOK, planOf(plan))
 }
 
+func (h *DependencyPlans) Cancel(w http.ResponseWriter, r *http.Request) {
+	principal, ok := authenticated(w, r)
+	if !ok {
+		return
+	}
+	if principal.Kind != string(domain.Human) {
+		httpserver.WriteError(w, http.StatusForbidden, kernel.CodeForbidden, "only a human may cancel a plan")
+		return
+	}
+	plan, err := h.plans.CancelPlan(r.Context(), actorOf(principal), r.PathValue("firstTask"), h.clock.Now())
+	if err != nil {
+		httpserver.WriteRuleError(w, err)
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, planOf(plan))
+}
+
 type planJSON struct {
 	Prerequisite string          `json:"prerequisite_key"`
 	Dependent    string          `json:"dependent_key"`
@@ -77,6 +94,8 @@ type planJSON struct {
 	ApprovedBy   int64           `json:"approved_by"`
 	ApprovedAt   int64           `json:"approved_at"`
 	Proof        *app.MergeProof `json:"proof"`
+	CancelledBy  int64           `json:"cancelled_by,omitempty"`
+	CancelledAt  int64           `json:"cancelled_at,omitempty"`
 }
 
 func planOf(plan app.DependencyPlan) planJSON {
@@ -84,10 +103,14 @@ func planOf(plan app.DependencyPlan) planJSON {
 		Prerequisite: plan.FirstTask, Dependent: plan.NextTask, State: "waiting",
 		ApprovedBy: plan.ApprovedBy, ApprovedAt: plan.ApprovedAt,
 		Repository: plan.Policy.Repository, Branch: plan.Policy.Branch, WorkflowID: plan.Policy.WorkflowID,
+		CancelledBy: plan.CancelledBy, CancelledAt: plan.CancelledAt,
 	}
-	if proof := plan.Proof; proof != nil {
+	switch {
+	case plan.Proof != nil:
 		body.State = "released"
-		body.Proof = proof
+		body.Proof = plan.Proof
+	case plan.CancelledAt > 0:
+		body.State = "cancelled"
 	}
 	return body
 }
