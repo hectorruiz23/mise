@@ -22,7 +22,7 @@ func TestPlanApprovalReleasesRoots(t *testing.T) {
 
 	graph, err := repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key, c.Key},
 		[]domain.PlanEdge{{From: a.Key, To: c.Key, Kind: domain.EdgeIntegration},
-			{From: b.Key, To: c.Key, Kind: domain.EdgeIntegration}}, policy, testNow)
+			{From: b.Key, To: c.Key, Kind: domain.EdgeIntegration}}, policy, app.PlanReview{Scenario: "make scenario"}, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestPlanApprovalReleasesRoots(t *testing.T) {
 	}
 
 	if _, err := repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key},
-		[]domain.PlanEdge{}, policy, testNow); err == nil {
+		[]domain.PlanEdge{}, policy, app.PlanReview{Scenario: "make scenario"}, testNow); err == nil {
 		t.Fatal("a task was approved into two plans")
 	}
 }
@@ -59,7 +59,7 @@ func TestPlanReleasesWhenAllPrerequisitesVerified(t *testing.T) {
 	policy := app.PlanPolicy{Repository: "owner/project", Branch: "main", WorkflowID: 72}
 	graph, err := repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key, c.Key},
 		[]domain.PlanEdge{{From: a.Key, To: c.Key, Kind: domain.EdgeIntegration},
-			{From: b.Key, To: c.Key, Kind: domain.EdgeIntegration}}, policy, testNow)
+			{From: b.Key, To: c.Key, Kind: domain.EdgeIntegration}}, policy, app.PlanReview{Scenario: "make scenario"}, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,18 +124,18 @@ func TestPlanRejectsBrokenGraphs(t *testing.T) {
 	policy := app.PlanPolicy{Repository: "owner/project", Branch: "main", WorkflowID: 72}
 	if _, err := repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key},
 		[]domain.PlanEdge{{From: a.Key, To: b.Key, Kind: domain.EdgeIntegration},
-			{From: b.Key, To: a.Key, Kind: domain.EdgeIntegration}}, policy, testNow); err == nil {
+			{From: b.Key, To: a.Key, Kind: domain.EdgeIntegration}}, policy, app.PlanReview{Scenario: "make scenario"}, testNow); err == nil {
 		t.Fatal("a cycle was approved")
 	}
 	_, err := repo.ApproveGraph(ctx, human(), []string{a.Key, other.Key},
-		[]domain.PlanEdge{{From: a.Key, To: other.Key, Kind: domain.EdgeIntegration}}, policy, testNow)
+		[]domain.PlanEdge{{From: a.Key, To: other.Key, Kind: domain.EdgeIntegration}}, policy, app.PlanReview{Scenario: "make scenario"}, testNow)
 	wantRuleCode(t, err, domain.CodeInvalidTransition)
 	if _, err := repo.ApproveGraph(ctx, agent(), []string{a.Key, b.Key},
-		[]domain.PlanEdge{}, policy, testNow); err == nil {
+		[]domain.PlanEdge{}, policy, app.PlanReview{Scenario: "make scenario"}, testNow); err == nil {
 		t.Fatal("an agent approved a plan")
 	}
 	_, err = repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key},
-		[]domain.PlanEdge{{From: a.Key, To: b.Key, Kind: domain.EdgeDeployment}}, policy, testNow)
+		[]domain.PlanEdge{{From: a.Key, To: b.Key, Kind: domain.EdgeDeployment}}, policy, app.PlanReview{Scenario: "make scenario"}, testNow)
 	wantRuleCode(t, err, domain.CodeInvalidInput)
 }
 
@@ -148,7 +148,7 @@ func TestPlanCancellationLeavesBacklog(t *testing.T) {
 	b, _ := createTask(t, service, app.CreateParams{Title: "Surface"})
 	policy := app.PlanPolicy{Repository: "owner/project", Branch: "main", WorkflowID: 72}
 	graph, err := repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key},
-		[]domain.PlanEdge{{From: a.Key, To: b.Key, Kind: domain.EdgeIntegration}}, policy, testNow)
+		[]domain.PlanEdge{{From: a.Key, To: b.Key, Kind: domain.EdgeIntegration}}, policy, app.PlanReview{Scenario: "make scenario"}, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestPlanShowsBlockedBranch(t *testing.T) {
 	policy := app.PlanPolicy{Repository: "owner/project", Branch: "main", WorkflowID: 72}
 	graph, err := repo.ApproveGraph(ctx, human(), []string{a.Key, b.Key, c.Key},
 		[]domain.PlanEdge{{From: a.Key, To: c.Key, Kind: domain.EdgeIntegration},
-			{From: b.Key, To: c.Key, Kind: domain.EdgeIntegration}}, policy, testNow)
+			{From: b.Key, To: c.Key, Kind: domain.EdgeIntegration}}, policy, app.PlanReview{Scenario: "make scenario"}, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}

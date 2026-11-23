@@ -109,9 +109,10 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | `POST /api/dependency-plans` | Approve two backlog tasks; a verified merge releases the second. Human only |
 | `GET /api/dependency-plans/{firstTask}` | Approval, policy and merge proof of a plan |
 | `POST /api/dependency-plans/{firstTask}/cancel` | Cancel a waiting plan; the dependent task stays in backlog |
-| `POST /api/plans` | Approve a graph of tasks with integration edges. Human only |
+| `POST /api/plans` | Approve a graph of tasks: edges, acceptance scenario, and the visual review that holds the final pull request. Human only |
 | `GET /api/plans` | Plans with their state |
-| `GET /api/plans/{id}` | Nodes, edges, what each node waits for and its proof |
+| `GET /api/plans/{id}` | Nodes, edges, what each node waits for, its proof, the scenario verdict, the owner's approval and the visible change |
+| `POST /api/plans/{id}/scenario` | The agent reports the acceptance scenario for a revision. Live lease, agent only |
 | `POST /api/plans/{id}/cancel` | Cancel a plan. Human only |
 | `GET /api/tasks/{key}/comments` | Comments |
 | `POST /api/tasks/{key}/comments` | Comment (an agent needs a live lease) |

@@ -32,6 +32,11 @@ func (r *Repo) PendingMerges(ctx context.Context) ([]app.MergeCandidate, error) 
 		                AND s.verdict = 'passed' AND s.delivered_at IS NOT NULL)
 		  AND NOT EXISTS (SELECT 1 FROM merge_attempts m
 		                  WHERE m.task_key = t.key AND m.pr_url = d.pr_url)
+		  AND NOT EXISTS (SELECT 1 FROM plan_nodes n
+		                  JOIN plans pl ON pl.id = n.plan_id AND pl.state = 'active'
+		                               AND pl.completed_at IS NULL
+		                  JOIN deliveries rd ON rd.task_key = n.task_key
+		                  WHERE n.reveals = 1 AND rd.pr_url = d.pr_url)
 		ORDER BY d.id`)
 	if err != nil {
 		return nil, fmt.Errorf("pending merges: %w", err)
@@ -131,8 +136,6 @@ func (r *Repo) PendingDeployments(ctx context.Context) ([]app.DeploymentCandidat
 		FROM plan_nodes n
 		JOIN plans p ON p.id = n.plan_id AND p.state = 'active'
 		JOIN plan_proofs pp ON pp.plan_id = n.plan_id AND pp.task_key = n.task_key
-		JOIN plan_edges e ON e.plan_id = n.plan_id AND e.from_task = n.task_key
-		                  AND e.kind = 'deployment'
 		JOIN environments env ON env.project_key = p.project_key
 		WHERE NOT EXISTS (SELECT 1 FROM plan_deployments d
 		                  WHERE d.plan_id = p.id AND d.task_key = n.task_key
@@ -283,7 +286,7 @@ func (r *Repo) settlePlan(ctx context.Context, conn *sql.Conn, planID int64, now
 			return err
 		}
 	}
-	return nil
+	return r.completePlanIfReady(ctx, conn, planID, now)
 }
 
 func closeMergedPlanTasks(
