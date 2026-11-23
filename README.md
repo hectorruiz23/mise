@@ -109,6 +109,11 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | `POST /api/plans` | Approve a graph of tasks: edges, acceptance scenario, and the visual review that holds the final pull request. Human only |
 | `GET /api/plans` | Plans with their state |
 | `GET /api/plans/{id}` | Nodes, edges, what each node waits for, its proof, the scenario verdict, the owner's approval and the visible change |
+| `POST /api/plan-drafts` | Propose a plan without creating work; the cards appear when it is approved. A credential is enough |
+| `GET /api/plan-drafts/{id}` | The proposal: outcome, scenario, tasks, edges, version and state |
+| `PUT /api/plan-drafts/{id}` | Change the proposal (`If-Match: <version>`); the link does not change |
+| `POST /api/plan-drafts/{id}/approve` | Create the cards and the plan from the version the owner saw. Human only |
+| `POST /api/plan-drafts/{id}/discard` | Drop a proposal. Human only |
 | `POST /api/plans/{id}/scenario` | The agent reports the acceptance scenario for a revision. Live lease, agent only |
 | `POST /api/plans/{id}/cancel` | Cancel a plan. Human only |
 | `GET /api/tasks/{key}/comments` | Comments |

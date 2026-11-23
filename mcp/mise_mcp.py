@@ -213,6 +213,45 @@ def tool_specs() -> list[dict]:
         t("comment",
           "Add a comment to a card. The body is stored as written.",
           {"key": {"type": "string"}, "body": {"type": "string"}}, ["key", "body"]),
+        t("propose_plan",
+          "Propose a plan for a project without creating any work: the cards are materialised only "
+          "when the owner approves it in the panel. Pass draft_id and version to change a proposal you "
+          "already made; the link stays the same and the version goes up. Returns the draft with its link.",
+          {"draft_id": {"type": "integer", "description": "Existing proposal to update"},
+           "version": {"type": "integer", "description": "Version you are editing; omit to use the current one"},
+           "project": {"type": "string", "description": "Project key, e.g. MI"},
+           "outcome": {"type": "string", "maxLength": 2000,
+                       "description": "What ships when the plan is done, in the owner's words"},
+           "scenario": {"type": "string",
+                        "description": "Command that proves the plan works over the integrated app, e.g. make scenario"},
+           "visual_review": {"type": "boolean",
+                             "description": "True when the plan changes what the owner sees"},
+           "visible_change": {"type": "string",
+                              "description": "What makes the change visible in production; required with visual_review"},
+           "reveal_key": {"type": "string",
+                          "description": "Key of the task whose pull request reveals the change; required with visual_review"},
+           "tasks": {"type": "array", "minItems": 2, "maxItems": 30,
+                     "items": {"type": "object", "additionalProperties": False,
+                               "required": ["key", "title"],
+                               "properties": {
+                                   "key": {"type": "string", "maxLength": 16,
+                                           "description": "Stable key inside the proposal, e.g. T1"},
+                                   "title": {"type": "string", "maxLength": 200},
+                                   "notes": {"type": "string", "maxLength": 50000},
+                                   "acceptance": {"type": "string", "maxLength": 10000},
+                                   "size": {"type": "string", "enum": ["S", "M", "L"]}}}},
+           "edges": {"type": "array",
+                     "items": {"type": "object", "additionalProperties": False,
+                               "required": ["from", "to"],
+                               "properties": {
+                                   "from": {"type": "string"},
+                                   "to": {"type": "string"},
+                                   "kind": {"type": "string", "enum": ["integration", "deployment"],
+                                            "default": "integration"}}}}},
+          ["outcome", "scenario", "tasks"]),
+        t("get_plan_draft",
+          "Read a proposal: its version, state, tasks, edges and which tasks can start together.",
+          {"draft_id": {"type": "integer"}}, ["draft_id"]),
     ]
 
 def _envelope(payload):
@@ -301,6 +340,26 @@ def run_tool(api: Api, name: str, args: dict) -> dict:
 
     if name == "comment":
         return _envelope(api.call("POST", f"/api/tasks/{args['key']}/comments", {"body": args["body"]}))
+
+    if name == "propose_plan":
+        fields = ("project", "outcome", "scenario", "tasks", "edges",
+                  "visual_review", "visible_change", "reveal_key")
+        body = {k: args[k] for k in fields if k in args}
+        if args.get("draft_id"):
+            current = api.call("GET", f"/api/plan-drafts/{int(args['draft_id'])}")
+            body.setdefault("project", current["project"])
+            version = int(args.get("version") or current["version"])
+            draft = api.call("PUT", f"/api/plan-drafts/{int(args['draft_id'])}", body,
+                             {"If-Match": f'"{version}"'})
+        else:
+            draft = api.call("POST", "/api/plan-drafts", body)
+        draft["link"] = f"{api.url}/#draft/{draft['id']}"
+        return draft
+
+    if name == "get_plan_draft":
+        draft = api.call("GET", f"/api/plan-drafts/{int(args['draft_id'])}")
+        draft["link"] = f"{api.url}/#draft/{draft['id']}"
+        return draft
 
     raise ApiError("unknown_tool", name)
 

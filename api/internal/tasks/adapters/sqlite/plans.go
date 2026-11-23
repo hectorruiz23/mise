@@ -88,43 +88,11 @@ func (r *Repo) ApproveGraph(
 		for key := range projects {
 			project = key
 		}
-		if err := requireEnvironments(ctx, conn, project, edges); err != nil {
-			return err
-		}
-		err := conn.QueryRowContext(ctx, `INSERT INTO plans
-			(project_key, repository, branch, workflow_id, approved_by, approved_at, state,
-			 scenario, visible_change, visual_review)
-			VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?) RETURNING id`,
-			project, policy.Repository, policy.Branch, policy.WorkflowID, actor.ID, now,
-			strings.TrimSpace(review.Scenario), nullableText(review.VisibleChange),
-			boolFlag(review.VisualReview)).Scan(&planID)
+		activated, err := r.activatePlan(ctx, conn, actor.ID, project, tasks, edges, policy, review, now)
 		if err != nil {
 			return err
 		}
-		for _, key := range tasks {
-			reveals := review.VisualReview && key == review.RevealTask
-			if _, err := conn.ExecContext(ctx,
-				`INSERT INTO plan_nodes (plan_id, task_key, reveals) VALUES (?, ?, ?)`,
-				planID, key, boolFlag(reveals)); err != nil {
-				return err
-			}
-		}
-		for _, edge := range edges {
-			if _, err := conn.ExecContext(ctx,
-				`INSERT INTO plan_edges (plan_id, from_task, to_task, kind) VALUES (?, ?, ?, ?)`,
-				planID, edge.From, edge.To, edge.Kind); err != nil {
-				return err
-			}
-		}
-		proofs := make(map[string]struct{})
-		for _, node := range tasks {
-			if len(domain.Unsatisfied(edges, proofs, map[string]struct{}{}, node)) > 0 {
-				continue
-			}
-			if err := readyPlanTask(ctx, conn, node, actor.ID, now, "Plan dependencies satisfied"); err != nil {
-				return err
-			}
-		}
+		planID = activated
 		return nil
 	})
 	if err != nil {

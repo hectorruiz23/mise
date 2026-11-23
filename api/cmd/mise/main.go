@@ -104,7 +104,8 @@ func run() error {
 	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{}))
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
 	graphs := taskshttp.NewGraphs(tasksRepo, cfg.planPolicy, clock)
-	registerRoutes(server, tasksHandler, usersHandler, graphs)
+	drafts := taskshttp.NewDrafts(tasksRepo, cfg.planPolicy, clock)
+	registerRoutes(server, tasksHandler, usersHandler, graphs, drafts)
 	server.SetFallback(panel.Handler())
 
 	listener, err := net.Listen("tcp", cfg.addr)
@@ -183,7 +184,7 @@ func run() error {
 	}
 }
 
-func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler, graphs *taskshttp.Graphs) {
+func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler, graphs *taskshttp.Graphs, drafts *taskshttp.Drafts) {
 	server.HandleReadFunc("GET /api/build", buildinfo.Handler())
 	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
@@ -213,6 +214,11 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleFunc("GET /api/plans/{id}", false, graphs.Get)
 	server.HandleFunc("POST /api/plans/{id}/cancel", false, graphs.Cancel)
 	server.HandleFunc("POST /api/plans/{id}/scenario", false, graphs.ReportScenario)
+	server.HandleFunc("POST /api/plan-drafts", false, drafts.CreateDraft)
+	server.HandleFunc("GET /api/plan-drafts/{id}", false, drafts.Draft)
+	server.HandleFunc("PUT /api/plan-drafts/{id}", false, drafts.UpdateDraft)
+	server.HandleFunc("POST /api/plan-drafts/{id}/approve", false, drafts.ApproveDraft)
+	server.HandleFunc("POST /api/plan-drafts/{id}/discard", false, drafts.DiscardDraft)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
 	server.HandleFunc("DELETE /api/sessions/current", false, usersHandler.Logout)
 	server.HandleFunc("POST /api/signup-requests", true, usersHandler.RequestSignup)
