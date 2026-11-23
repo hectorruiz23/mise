@@ -102,6 +102,8 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | `GET /api/tasks/{key}/deliveries` | Deliveries with their evidence |
 | `POST /api/tasks/{key}/deliveries` | Hand the work back; moves the card to `review` |
 | `GET /api/tasks/{key}/anchors` | Pull request state and checks, cached and budgeted |
+| `POST /api/dependency-plans` | Approve two backlog tasks; a verified merge releases the second. Human only |
+| `GET /api/dependency-plans/{firstTask}` | Approval, policy and merge proof of a plan |
 | `GET /api/tasks/{key}/comments` | Comments |
 | `POST /api/tasks/{key}/comments` | Comment (an agent needs a live lease) |
 | `POST /api/sessions` | Token in, session cookie out |

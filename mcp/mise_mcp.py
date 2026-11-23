@@ -190,7 +190,8 @@ def tool_specs() -> list[dict]:
         t("deliver",
           "Deliver the work: a summary plus at least one verifiable piece of evidence. Moves the "
           "card to review and closes your lease. Pass exactly one of evidence (plain strings) or "
-          "evidence_items ({label, raw} objects).",
+          "evidence_items ({label, raw} objects). When delivering a pull request for a dependency "
+          "plan, include pr_url and one evidence_items entry labeled head_sha with its full head commit.",
           {"key": {"type": "string"},
            "summary": {"type": "string", "description": "What you did, in plain language"},
            "evidence": {"type": "array", "items": {"type": "string"}, "minItems": 1, "maxItems": 20,

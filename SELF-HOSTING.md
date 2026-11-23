@@ -87,6 +87,22 @@ sudo install -o <service-user> -g <service-user> -m 0755 api/build/mise /srv/mis
 | `MISE_PUBLIC_ORIGIN` | Public origin, scheme and host, no trailing slash. **Required in practice** | empty |
 | `MISE_LOG_LEVEL` | `debug`, `info`, `warn` or `error` | `info` |
 | `MISE_TRUST_PROXY` | Read the client address for the login limit from `X-Forwarded-For` | `false` |
+| `MISE_PLAN_REPOSITORY` | GitHub repository for verified task dependencies, e.g. `owner/repo` | empty |
+| `MISE_PLAN_BRANCH` | Target branch for the prerequisite pull request | empty |
+| `MISE_PLAN_WORKFLOW_ID` | Numeric GitHub Actions workflow ID that checks pushes to the target branch | empty |
+| `MISE_GITHUB_VERIFICATION_TOKEN` | Optional fine-grained token with read access to pull requests and Actions for private repositories | empty |
+
+Set all three `MISE_PLAN_*` variables to enable two-task dependency plans. Choose a workflow that runs the
+required checks on each push to the target branch. Protect changes to that workflow and its tests through
+repository review. Mise verifies the workflow's reported conclusion at the merged commit.
+
+A human account approves two backlog tasks from the same project by sending
+`{"prerequisite_key":"MI-1","dependent_key":"MI-2"}` to `POST /api/dependency-plans`; an agent token is
+refused with `403` and an unset policy answers `409`. The first task becomes ready. Its agent delivers
+the PR URL and exactly one `evidence_items` entry labeled `head_sha` whose raw value is the full
+40-character PR head commit. Mise checks GitHub in the background. When the delivered revision has
+merged into the approved branch and its merge commit has passed the approved workflow, the second task
+becomes ready to lease. Read the plan at `GET /api/dependency-plans/MI-1`.
 
 `MISE_PUBLIC_ORIGIN` does two jobs: it decides whether the session cookie carries `Secure`, and it is
 what the CSRF check compares against the request's `Origin` header. With it empty, every `POST`,
