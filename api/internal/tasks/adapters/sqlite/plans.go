@@ -118,10 +118,10 @@ func (r *Repo) readGraph(ctx context.Context, q planQuerier, id int64) (app.Plan
 	var completedAt sql.NullInt64
 	err := q.QueryRowContext(ctx, `SELECT id, project_key, repository, branch, workflow_id,
 		approved_by, approved_at, state, cancelled_by, cancelled_at,
-		scenario, visible_change, visual_review, completed_at FROM plans WHERE id = ?`, id).
+		scenario, visible_change, visual_review, completed_at, target_environment FROM plans WHERE id = ?`, id).
 		Scan(&plan.ID, &plan.Project, &plan.Policy.Repository, &plan.Policy.Branch, &plan.Policy.WorkflowID,
 			&plan.ApprovedBy, &plan.ApprovedAt, &plan.State, &cancelledBy, &cancelledAt,
-			&plan.Scenario, &visibleChange, &visualReview, &completedAt)
+			&plan.Scenario, &visibleChange, &visualReview, &completedAt, &plan.TargetEnvironment)
 	if errors.Is(err, sql.ErrNoRows) {
 		return plan, &domain.RuleError{Code: domain.CodeNotFound, Msg: "plan not found"}
 	}
@@ -322,13 +322,13 @@ func (r *Repo) CancelGraph(ctx context.Context, actor domain.Actor, id int64, no
 
 func (r *Repo) PendingGraphTasks(ctx context.Context) ([]app.PendingPlanTask, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT p.id, n.task_key, p.repository, p.branch, p.workflow_id, d.id, d.pr_url, d.evidence
+		SELECT p.id, n.task_key, p.repository, p.branch, p.workflow_id, p.approved_at, d.id, d.pr_url, d.head_sha, d.evidence
 		FROM plan_nodes n
 		JOIN plans p ON p.id = n.plan_id AND p.state = 'active'
 		JOIN tasks t ON t.key = n.task_key
 		LEFT JOIN deliveries d ON t.state IN ('review','done') AND d.id = (
 		    SELECT MAX(id) FROM deliveries
-		    WHERE task_key = n.task_key AND pr_url IS NOT NULL AND created_at >= p.approved_at
+		    WHERE task_key = n.task_key AND created_at >= p.approved_at
 		)
 		WHERE NOT EXISTS (SELECT 1 FROM plan_proofs pp
 		    WHERE pp.plan_id = n.plan_id AND pp.task_key = n.task_key)
@@ -341,17 +341,21 @@ func (r *Repo) PendingGraphTasks(ctx context.Context) ([]app.PendingPlanTask, er
 	for rows.Next() {
 		var item app.PendingPlanTask
 		var deliveryID sql.NullInt64
-		var prURL, evidence sql.NullString
+		var prURL, headSHA, evidence sql.NullString
 		if err := rows.Scan(&item.PlanID, &item.TaskKey, &item.Policy.Repository, &item.Policy.Branch,
-			&item.Policy.WorkflowID, &deliveryID, &prURL, &evidence); err != nil {
+			&item.Policy.WorkflowID, &item.ApprovedAt, &deliveryID, &prURL, &headSHA, &evidence); err != nil {
 			return nil, err
 		}
 		if !deliveryID.Valid || !prURL.Valid {
 			continue
 		}
-		head, ok := evidenceHeadSHA(evidence.String)
-		if !ok {
-			continue
+		head := strings.ToLower(strings.TrimSpace(headSHA.String))
+		if !commitSHA(head) {
+			var ok bool
+			head, ok = evidenceHeadSHA(evidence.String)
+			if !ok {
+				continue
+			}
 		}
 		item.DeliveryID, item.PRURL, item.HeadSHA = deliveryID.Int64, prURL.String, head
 		pending = append(pending, item)

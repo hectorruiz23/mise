@@ -138,6 +138,7 @@ curl -s -X POST https://mise.example/api/plans \
   -H "Authorization: Bearer $MISE_TOKEN" -H 'Content-Type: application/json' \
   -d '{"tasks":["MI-1","MI-2","MI-3"],
        "scenario":"make scenario",
+       "target_environment":"production",
        "edges":[{"from":"MI-1","to":"MI-3"},{"from":"MI-2","to":"MI-3"}]}'
 ```
 
@@ -221,7 +222,8 @@ The MCP server exposes `propose_plan` and `get_plan_draft`, so an agent can prop
 ## Visual review and the acceptance scenario
 
 A plan that changes what the owner sees names, at approval time, the task whose pull request is the only one
-that can make the change visible:
+that can make the change visible. When acceptance requires deployment, set `target_environment` to the
+registered project environment that must serve the integrated revision. The example targets `production`.
 
 ```sh
 curl -s -X POST https://mise.example/api/plans \
@@ -234,13 +236,13 @@ curl -s -X POST https://mise.example/api/plans \
        "edges":[{"from":"MI-1","to":"MI-3"},{"from":"MI-2","to":"MI-3"}]}'
 ```
 
-The pull request of `reveal_task` is never merged by Mise, whatever its checks say: the owner merges it. The
-tasks before it merge and deploy on their own. Without feature toggles, that is the boundary between what can
-land early and what cannot.
+The owner merges the pull request of `reveal_task` manually, even if the plan is cancelled. The tasks before
+it merge and deploy on their own. Mise sends GitHub the exact head that passed the required checks when it
+merges those pull requests. If the head changes, deliver the new revision with passing checks.
 
 The agent that works the last task runs `scenario` over the integrated frontend and backend, leaves the tested
 commit, the journey, the result and the instructions in the pull request, and reports it while it still holds
-the lease:
+the lease. Run the exact approved command in local development or in preview.
 
 ```sh
 curl -s -X POST https://mise.example/api/plans/7/scenario \
@@ -251,13 +253,13 @@ curl -s -X POST https://mise.example/api/plans/7/scenario \
 
 Mise polls the reviews of that pull request. An approval from the owner of the repository, on that same
 commit, is the only manual sign-off: it is stored per revision, so a new commit needs new evidence and a new
-approval. A pending `CHANGES_REQUESTED` review, or a failed scenario, opens a single correction task inside
-the plan, in `ready`, with the evidence linked; the same event twice does not open it twice.
+approval. A later `CHANGES_REQUESTED` review on the same commit revokes its approval. A request for
+changes or a failed scenario opens one correction task in the plan for that revision and event type.
 
 The plan completes when every task is closed, the scenario passed for the revision that was merged, the owner
-approved that revision when the plan asked for visual review, and the merged commit is serving in every
-environment of the project. `GET /api/plans/{id}` reports `state: "completed"` and `completed_at`. A plan
-without visual review needs no approval.
+approved that revision when the plan asked for visual review, and Mise observes the merged commit at
+`/api/build` in the target environment. When `target_environment` is omitted, the plan uses all registered
+project environments. `GET /api/plans/{id}` reports `state: "completed"` and `completed_at`.
 
 Review polling needs no extra token on a public repository; set `MISE_GITHUB_VERIFICATION_TOKEN` for a private
 one.

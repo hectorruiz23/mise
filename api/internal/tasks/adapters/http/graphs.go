@@ -34,12 +34,13 @@ func (h *Graphs) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Tasks         []string `json:"tasks"`
-		Scenario      string   `json:"scenario"`
-		VisibleChange *string  `json:"visible_change"`
-		VisualReview  bool     `json:"visual_review"`
-		RevealTask    string   `json:"reveal_task"`
-		Edges         []struct {
+		TargetEnvironment string   `json:"target_environment"`
+		Tasks             []string `json:"tasks"`
+		Scenario          string   `json:"scenario"`
+		VisibleChange     *string  `json:"visible_change"`
+		VisualReview      bool     `json:"visual_review"`
+		RevealTask        string   `json:"reveal_task"`
+		Edges             []struct {
 			From string `json:"from"`
 			To   string `json:"to"`
 			Kind string `json:"kind"`
@@ -59,10 +60,11 @@ func (h *Graphs) Approve(w http.ResponseWriter, r *http.Request) {
 	}
 	graph, err := h.store.ApproveGraph(r.Context(), actorOf(principal), body.Tasks, edges,
 		h.policy, app.PlanReview{
-			Scenario:      body.Scenario,
-			VisibleChange: body.VisibleChange,
-			VisualReview:  body.VisualReview,
-			RevealTask:    body.RevealTask,
+			TargetEnvironment: body.TargetEnvironment,
+			Scenario:          body.Scenario,
+			VisibleChange:     body.VisibleChange,
+			VisualReview:      body.VisualReview,
+			RevealTask:        body.RevealTask,
 		}, h.clock.Now())
 	if err != nil {
 		httpserver.WriteRuleError(w, err)

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"sync"
 	"syscall"
 	"time"
 
@@ -141,21 +140,13 @@ func run() error {
 	} else {
 		logger.Info("auto merge disabled", "reason", "MISE_GITHUB_MERGE_TOKEN is not set")
 	}
-	reviews := &reviewWorker{store: tasksRepo, clock: clock, github: githubinfo.New(githubinfo.Options{
-		VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
-	})}
 	workerCtx, workerStop := context.WithCancel(context.Background())
-	var workers sync.WaitGroup
-	workers.Add(2)
+	integrationDone := make(chan struct{})
 	go func() {
-		defer workers.Done()
+		defer close(integrationDone)
 		integration.run(workerCtx, logger)
 	}()
-	go func() {
-		defer workers.Done()
-		reviews.run(workerCtx, logger)
-	}()
-	defer func() { workerStop(); workers.Wait() }()
+	defer func() { workerStop(); <-integrationDone }()
 
 	serveErr := make(chan error, 1)
 	go func() {

@@ -24,13 +24,24 @@ func (r *Repo) activatePlan(
 	if err := requireEnvironments(ctx, conn, project, edges); err != nil {
 		return 0, err
 	}
+	target := strings.TrimSpace(review.TargetEnvironment)
+	if target != "" {
+		var exists bool
+		if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM environments
+			WHERE project_key = ? AND name = ?)`, project, target).Scan(&exists); err != nil {
+			return 0, err
+		}
+		if !exists {
+			return 0, invalidInput("the target environment must be registered in the project")
+		}
+	}
 	err := conn.QueryRowContext(ctx, `INSERT INTO plans
 	(project_key, repository, branch, workflow_id, approved_by, approved_at, state,
-	 scenario, visible_change, visual_review)
-	VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?) RETURNING id`,
+	 scenario, visible_change, visual_review, target_environment)
+	VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?) RETURNING id`,
 		project, policy.Repository, policy.Branch, policy.WorkflowID, approverID, now,
 		strings.TrimSpace(review.Scenario), nullableText(review.VisibleChange),
-		boolFlag(review.VisualReview)).Scan(&planID)
+		boolFlag(review.VisualReview), target).Scan(&planID)
 	if err != nil {
 		return 0, err
 	}

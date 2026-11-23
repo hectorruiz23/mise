@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"mise/api/internal/githubinfo"
 	"mise/api/internal/tasks/app"
 	"mise/api/internal/tasks/domain"
 )
@@ -29,14 +30,10 @@ func (r *Repo) PendingMerges(ctx context.Context) ([]app.MergeCandidate, error) 
 		  AND u.kind = 'agent'
 		  AND EXISTS (SELECT 1 FROM submissions s
 		              WHERE s.task_key = t.key AND s.head_sha = lower(d.head_sha)
-		                AND s.verdict = 'passed' AND s.delivered_at IS NOT NULL)
+		                AND s.pr_url = d.pr_url AND s.verdict = 'passed' AND s.delivered_at IS NOT NULL)
 		  AND NOT EXISTS (SELECT 1 FROM merge_attempts m
-		                  WHERE m.task_key = t.key AND m.pr_url = d.pr_url)
-		  AND NOT EXISTS (SELECT 1 FROM plan_nodes n
-		                  JOIN plans pl ON pl.id = n.plan_id AND pl.state = 'active'
-		                               AND pl.completed_at IS NULL
-		                  JOIN deliveries rd ON rd.task_key = n.task_key
-		                  WHERE n.reveals = 1 AND rd.pr_url = d.pr_url)
+		                  WHERE m.task_key = t.key AND m.pr_url = d.pr_url
+		                    AND (m.delivery_id IS NULL OR m.delivery_id = d.id))
 		ORDER BY d.id`)
 	if err != nil {
 		return nil, fmt.Errorf("pending merges: %w", err)
@@ -57,15 +54,65 @@ func (r *Repo) PendingMerges(ctx context.Context) ([]app.MergeCandidate, error) 
 		}
 		candidates = append(candidates, candidate)
 	}
-	return candidates, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(candidates) == 0 {
+		return candidates, nil
+	}
+
+	visual, err := r.visualPullRequests(ctx)
+	if err != nil {
+		return nil, err
+	}
+	eligible := candidates[:0]
+	for _, candidate := range candidates {
+		ref, _ := githubinfo.ParsePullRequest(candidate.PRURL)
+		if _, protected := visual[canonicalPullRequest(ref)]; !protected {
+			eligible = append(eligible, candidate)
+		}
+	}
+	return eligible, nil
+}
+
+func (r *Repo) visualPullRequests(ctx context.Context) (map[githubinfo.Ref]struct{}, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT d.pr_url FROM plan_nodes n
+		JOIN deliveries d ON d.task_key = n.task_key
+		WHERE n.reveals = 1 AND d.pr_url IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("read visual pull requests: %w", err)
+	}
+	defer rows.Close()
+
+	visual := make(map[githubinfo.Ref]struct{})
+	for rows.Next() {
+		var url string
+		if err := rows.Scan(&url); err != nil {
+			return nil, err
+		}
+		if ref, ok := githubinfo.ParsePullRequest(url); ok {
+			visual[canonicalPullRequest(ref)] = struct{}{}
+		}
+	}
+	return visual, rows.Err()
+}
+
+func canonicalPullRequest(ref githubinfo.Ref) githubinfo.Ref {
+	ref.Owner = strings.ToLower(ref.Owner)
+	ref.Repo = strings.ToLower(ref.Repo)
+	return ref
 }
 
 func (r *Repo) RecordMergeAttempt(ctx context.Context, outcome app.MergeOutcome, now int64) error {
 	return r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
 		if _, err := conn.ExecContext(ctx, `
-			INSERT INTO merge_attempts (task_key, pr_url, outcome, reason, merge_sha, attempted_at)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			outcome.TaskKey, outcome.PRURL, outcome.Outcome, outcome.Reason, nullableText(outcome.MergeSHA), now); err != nil {
+			INSERT INTO merge_attempts (task_key, pr_url, outcome, reason, merge_sha, attempted_at, delivery_id)
+			VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, 0))
+			ON CONFLICT (task_key, pr_url) DO UPDATE SET outcome = excluded.outcome,
+				reason = excluded.reason, merge_sha = excluded.merge_sha, attempted_at = excluded.attempted_at,
+				delivery_id = excluded.delivery_id
+			WHERE merge_attempts.outcome <> 'merged'`,
+			outcome.TaskKey, outcome.PRURL, outcome.Outcome, outcome.Reason, nullableText(outcome.MergeSHA), now, outcome.DeliveryID); err != nil {
 			return fmt.Errorf("record merge attempt for %q: %w", outcome.TaskKey, err)
 		}
 		if outcome.Outcome == app.MergeOutcomeMerged {
@@ -90,7 +137,9 @@ func (r *Repo) RecordMerge(ctx context.Context, evidence app.MergeEvidence, now 
 		if _, err := conn.ExecContext(ctx, `
 			INSERT INTO merge_attempts (task_key, pr_url, outcome, reason, merge_sha, attempted_at)
 			VALUES (?, ?, 'merged', ?, ?, ?)
-			ON CONFLICT (task_key, pr_url) DO NOTHING`,
+			ON CONFLICT (task_key, pr_url) DO UPDATE SET outcome = excluded.outcome,
+				reason = excluded.reason, merge_sha = excluded.merge_sha, attempted_at = excluded.attempted_at,
+				delivery_id = NULL WHERE merge_attempts.outcome <> 'merged'`,
 			evidence.TaskKey, evidence.PRURL, reason, evidence.MergeSHA, now); err != nil {
 			return fmt.Errorf("record merge for %q: %w", evidence.TaskKey, err)
 		}

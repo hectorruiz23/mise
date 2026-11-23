@@ -20,10 +20,11 @@ const (
 )
 
 type PlanReview struct {
-	Scenario      string
-	VisibleChange *string
-	VisualReview  bool
-	RevealTask    string
+	TargetEnvironment string
+	Scenario          string
+	VisibleChange     *string
+	VisualReview      bool
+	RevealTask        string
 }
 
 type ScenarioReport struct {
@@ -84,24 +85,26 @@ type PlanNode struct {
 }
 
 type PlanGraph struct {
-	ID            int64             `json:"id"`
-	Project       string            `json:"project"`
-	Policy        PlanPolicy        `json:"policy"`
-	Scenario      string            `json:"scenario"`
-	VisibleChange *string           `json:"visible_change"`
-	VisualReview  bool              `json:"visual_review"`
-	ApprovedBy    int64             `json:"approved_by"`
-	ApprovedAt    int64             `json:"approved_at"`
-	CompletedAt   *int64            `json:"completed_at"`
-	State         string            `json:"state"`
-	CancelledBy   int64             `json:"cancelled_by,omitempty"`
-	CancelledAt   int64             `json:"cancelled_at,omitempty"`
-	Approval      *PlanApproval     `json:"approval"`
-	Nodes         []PlanNode        `json:"nodes"`
-	Edges         []domain.PlanEdge `json:"edges"`
+	TargetEnvironment string            `json:"target_environment,omitempty"`
+	ID                int64             `json:"id"`
+	Project           string            `json:"project"`
+	Policy            PlanPolicy        `json:"policy"`
+	Scenario          string            `json:"scenario"`
+	VisibleChange     *string           `json:"visible_change"`
+	VisualReview      bool              `json:"visual_review"`
+	ApprovedBy        int64             `json:"approved_by"`
+	ApprovedAt        int64             `json:"approved_at"`
+	CompletedAt       *int64            `json:"completed_at"`
+	State             string            `json:"state"`
+	CancelledBy       int64             `json:"cancelled_by,omitempty"`
+	CancelledAt       int64             `json:"cancelled_at,omitempty"`
+	Approval          *PlanApproval     `json:"approval"`
+	Nodes             []PlanNode        `json:"nodes"`
+	Edges             []domain.PlanEdge `json:"edges"`
 }
 
 type PendingPlanTask struct {
+	ApprovedAt int64
 	PlanID     int64
 	TaskKey    string
 	DeliveryID int64

@@ -32,6 +32,10 @@ func (w *graphWorker) run(ctx context.Context, logger *slog.Logger) {
 }
 
 func (w *graphWorker) poll(ctx context.Context) error {
+	reviews := reviewWorker{store: w.store, github: w.github, clock: w.clock}
+	if err := reviews.poll(ctx); err != nil {
+		return err
+	}
 	pending, err := w.store.PendingGraphTasks(ctx)
 	if err != nil {
 		return err
@@ -41,7 +45,7 @@ func (w *graphWorker) poll(ctx context.Context) error {
 			continue
 		}
 		proof, err := w.github.VerifyMerge(ctx, item.Policy.Repository, item.Policy.Branch,
-			item.Policy.WorkflowID, item.PRURL, item.HeadSHA, w.clock.Now())
+			item.Policy.WorkflowID, item.PRURL, item.HeadSHA, item.ApprovedAt)
 		if err != nil {
 			return err
 		}
