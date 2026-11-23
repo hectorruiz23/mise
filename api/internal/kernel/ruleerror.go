@@ -19,6 +19,7 @@ const (
 	CodeSessionExpired       = "session_expired"
 	CodeChecksFailed         = "checks_failed"
 	CodeChecksPending        = "checks_pending"
+	CodeDispatchExhausted    = "dispatch_exhausted"
 )
 
 type RuleError struct {

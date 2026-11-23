@@ -249,6 +249,8 @@ func (h *Handler) Projects(w nethttp.ResponseWriter, r *nethttp.Request) {
 			State:          project.State,
 			Cards:          cardsJSON{Total: project.Cards.Total, Done: project.Cards.Done},
 			RequiredChecks: required,
+			AutoDispatch:   project.AutoDispatch,
+			DispatchLimit:  project.DispatchLimit,
 		})
 	}
 	httpserver.WriteJSON(w, nethttp.StatusOK, items)
@@ -761,6 +763,8 @@ type projectJSON struct {
 	State          string    `json:"state"`
 	Cards          cardsJSON `json:"cards"`
 	RequiredChecks []string  `json:"required_checks"`
+	AutoDispatch   bool      `json:"auto_dispatch"`
+	DispatchLimit  int       `json:"dispatch_limit"`
 }
 
 type cardsJSON struct {

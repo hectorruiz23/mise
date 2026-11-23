@@ -53,6 +53,7 @@ const MESSAGES: Record<string, string> = {
   lease_conflict: 'Another actor already holds a live lease on this task.',
   checks_failed: 'The delivered revision failed its required checks. Read the failed checks and deliver again.',
   checks_pending: 'The checks for this revision have not finished. Wait and deliver again.',
+  dispatch_exhausted: 'This card was dispatched too many times without a delivery. Reopen it before another agent takes it.',
   idempotency_conflict: 'This retry reused the key with a different payload.',
   signup_pending: 'This signup request is still pending approval.',
   signup_consumed: 'This signup request has already been used.',

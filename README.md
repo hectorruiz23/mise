@@ -89,7 +89,7 @@ approval, `GET /api/health` is public, and everything else needs a credential.
 | `GET /api/me` | The authenticated actor |
 | `GET /api/public/board` | Public snapshot for the portfolio. Public |
 | `GET /api/projects` | Projects and their keys, with their required checks |
-| `PATCH /api/projects/{key}` | Set the required checks of a project. Human only |
+| `PATCH /api/projects/{key}` | Set the required checks and the dispatch policy of a project. Human only |
 | `GET /api/board` | Five columns keyed by state, plus counts |
 | `GET /api/tasks?state=&project=&limit=` | One page, cursor in `next_cursor` |
 | `POST /api/tasks` | Create (`Idempotency-Key` required, lands in `backlog`) |
