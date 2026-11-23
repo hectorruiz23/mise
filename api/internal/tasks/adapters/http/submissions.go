@@ -20,6 +20,8 @@ func (h *Handler) PatchProject(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		RequiredChecks *[]string `json:"required_checks"`
+		AutoDispatch   *bool     `json:"auto_dispatch"`
+		DispatchLimit  *int      `json:"dispatch_limit"`
 	}
 	if err := decodeStrict(r, &body); err != nil {
 		httpserver.WriteError(w, http.StatusBadRequest, kernel.CodeInvalidInput, "invalid JSON body")
@@ -34,6 +36,20 @@ func (h *Handler) PatchProject(w http.ResponseWriter, r *http.Request) {
 		*body.RequiredChecks); err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
+	}
+	if body.AutoDispatch != nil || body.DispatchLimit != nil {
+		enabled, limit := false, 3
+		if body.AutoDispatch != nil {
+			enabled = *body.AutoDispatch
+		}
+		if body.DispatchLimit != nil {
+			limit = *body.DispatchLimit
+		}
+		if err := h.service.UpdateProjectDispatch(r.Context(), actorOf(principal), r.PathValue("key"),
+			enabled, limit); err != nil {
+			httpserver.WriteRuleError(w, err)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

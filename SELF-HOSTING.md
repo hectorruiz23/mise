@@ -112,6 +112,25 @@ cancelled it and when. The dependent task stays in backlog and can be moved, edi
 a verification that arrives afterwards cannot release it, and the cancelled plan stays as the record of
 that pair.
 
+## Dispatching agents
+
+A project can hand its available cards to an agent runner. The switch and the budget are per project:
+
+```sh
+curl -s -X PATCH https://mise.example/api/projects/MI \
+  -H "Authorization: Bearer $MISE_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"auto_dispatch":true,"dispatch_limit":3}'
+```
+
+With the switch off (the default) nothing changes. With it on, an agent that takes a card spends one dispatch,
+and Mise refuses the next one once the card has been leased `dispatch_limit` times; the refusal is
+`409 dispatch_exhausted`. Every human move of a blocked card back to `ready` or `in_progress` grants one extra
+dispatch, which is the retry after a block: the same card, another agent, the attempt history at hand.
+
+A blocked card is never dispatched on its own. The budget exists because a run that dies, or that never
+delivers, spends no attempt of the check rule: without it the runner would take the same card forever.
+`GET /api/projects` exposes `auto_dispatch` and `dispatch_limit` so a runner can tell which projects it may serve.
+
 ## Plan graphs
 
 A plan is a graph of two or more tasks that share a project and the configured policy:

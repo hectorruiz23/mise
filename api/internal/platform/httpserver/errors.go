@@ -51,7 +51,8 @@ func ErrorStatus(code string) int {
 		kernel.CodeEvidenceRequired,
 		kernel.CodeLeaseRequired,
 		kernel.CodeChecksFailed,
-		kernel.CodeChecksPending:
+		kernel.CodeChecksPending,
+		kernel.CodeDispatchExhausted:
 		return http.StatusConflict
 	case kernel.CodeStaleVersion:
 		return http.StatusPreconditionFailed
