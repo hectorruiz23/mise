@@ -224,6 +224,10 @@ def tool_specs() -> list[dict]:
                        "description": "What ships when the plan is done, in the owner's words"},
            "scenario": {"type": "string",
                         "description": "Command that proves the plan works over the integrated app, e.g. make scenario"},
+           "target_environment": {"type": "string", "maxLength": 40,
+                                  "description": "Environment the owner approves as the target, e.g. production. It must be "
+                                                 "registered in the project; the plan closes only when that environment "
+                                                 "serves the merged revision."},
            "visual_review": {"type": "boolean",
                              "description": "True when the plan changes what the owner sees"},
            "visible_change": {"type": "string",
@@ -250,8 +254,30 @@ def tool_specs() -> list[dict]:
                                             "default": "integration"}}}}},
           ["outcome", "scenario", "tasks"]),
         t("get_plan_draft",
-          "Read a proposal: its version, state, tasks, edges and which tasks can start together.",
+          "Read a proposal: its version, state, tasks, edges and which tasks can start together. "
+          "Once approved, plan_id names the running plan.",
           {"draft_id": {"type": "integer"}}, ["draft_id"]),
+        t("get_plan",
+          "Read a plan once the owner approved it: its approved scenario, the target environment, "
+          "and the state of every task. Use plan_id from the proposal you created.",
+          {"plan_id": {"type": "integer"}}, ["plan_id"]),
+        t("report_scenario",
+          "Report the plan's acceptance scenario for the revision you are working, before delivering. "
+          "The order is: acquire_lease, run the scenario over the integrated app, report_scenario with "
+          "the evidence link, then deliver. The command must match the approved scenario and the card "
+          "must be yours and in progress.",
+          {"plan_id": {"type": "integer",
+                       "description": "Plan id from get_plan_draft after approval, or from get_plan"},
+           "task_key": {"type": "string", "description": "Card the scenario ran against, e.g. MI-12"},
+           "head_sha": {"type": "string", "pattern": "^[0-9a-fA-F]{40}$",
+                        "description": "Full head commit the scenario ran against"},
+           "command": {"type": "string", "description": "The approved scenario command, e.g. make scenario"},
+           "outcome": {"type": "string", "enum": ["passed", "failed"]},
+           "evidence_url": {"type": "string", "maxLength": 500,
+                            "description": "Link to the output of the run; required"},
+           "notes": {"type": "string", "maxLength": 4000,
+                     "description": "Anything the owner should know about the run"}},
+          ["plan_id", "task_key", "head_sha", "command", "outcome", "evidence_url"]),
     ]
 
 def _envelope(payload):
@@ -342,12 +368,14 @@ def run_tool(api: Api, name: str, args: dict) -> dict:
         return _envelope(api.call("POST", f"/api/tasks/{args['key']}/comments", {"body": args["body"]}))
 
     if name == "propose_plan":
-        fields = ("project", "outcome", "scenario", "tasks", "edges",
+        fields = ("project", "outcome", "scenario", "target_environment", "tasks", "edges",
                   "visual_review", "visible_change", "reveal_key")
         body = {k: args[k] for k in fields if k in args}
         if args.get("draft_id"):
             current = api.call("GET", f"/api/plan-drafts/{int(args['draft_id'])}")
             body.setdefault("project", current["project"])
+            if "target_environment" not in body and current.get("target_environment"):
+                body["target_environment"] = current["target_environment"]
             version = int(args.get("version") or current["version"])
             draft = api.call("PUT", f"/api/plan-drafts/{int(args['draft_id'])}", body,
                              {"If-Match": f'"{version}"'})
@@ -355,6 +383,14 @@ def run_tool(api: Api, name: str, args: dict) -> dict:
             draft = api.call("POST", "/api/plan-drafts", body)
         draft["link"] = f"{api.url}/#draft/{draft['id']}"
         return draft
+
+    if name == "get_plan":
+        return api.call("GET", f"/api/plans/{int(args['plan_id'])}")
+
+    if name == "report_scenario":
+        body = {k: args[k] for k in ("task_key", "head_sha", "command", "outcome",
+                                     "evidence_url", "notes") if k in args}
+        return api.call("POST", f"/api/plans/{int(args['plan_id'])}/scenario", body)
 
     if name == "get_plan_draft":
         draft = api.call("GET", f"/api/plan-drafts/{int(args['draft_id'])}")

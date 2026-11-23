@@ -2,9 +2,11 @@
 """End-to-end smoke test for the Mise MCP server against a throwaway local API.
 
 Speaks JSON-RPC over stdio to mise_mcp.py, the way a client would, and checks the contract:
-handshake, twelve tools, the board loads, one card resolves, and a real delivery with structured
-evidence reaches the API. It builds and starts its own instance under a temporary database, so
-it never touches the owner's board.
+handshake, fourteen tools, the board loads, one card resolves, a real delivery with structured
+evidence reaches the API, and one plan travels the whole path an agent sees: propose with a
+target environment, the owner approves, the agent reads the plan, reports the scenario while
+its lease is live and delivers. It builds and starts its own instance under a temporary
+database, so it never touches the owner's board.
 
     python3 mcp/smoke.py            # exits 0 on success, 1 with the reason on failure
 """
@@ -113,6 +115,9 @@ def start_server(binary: str, origin: str, db_path: str, log_path: str):
         "MISE_DB": db_path,
         "MISE_PUBLIC_ORIGIN": origin,
         "MISE_LOG_LEVEL": "warn",
+        "MISE_PLAN_REPOSITORY": "example/project",
+        "MISE_PLAN_BRANCH": "main",
+        "MISE_PLAN_WORKFLOW_ID": "42",
     })
     log = open(log_path, "w", encoding="utf-8")
     process = subprocess.Popen([binary], env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -248,16 +253,29 @@ def run() -> int:
 
         tools = mcp.call("tools/list")["result"]["tools"]
         names = [tool["name"] for tool in tools]
-        check(len(names) == 12, "twelve tools listed", f"got {len(names)}: {names}")
+        check(len(names) == 14, "fourteen tools listed", f"got {len(names)}: {names}")
         for forbidden in ("approve", "delete_task", "create_project"):
             check(forbidden not in names, f"no {forbidden} tool (the API refuses it for agents)")
         check(all(tool.get("inputSchema", {}).get("type") == "object" for tool in tools),
               "every tool declares a JSON schema")
+        check({"get_plan", "report_scenario"} <= set(names),
+              "the agent can read its plan and report the scenario", str(names))
 
         deliver_spec = next((tool for tool in tools if tool["name"] == "deliver"), None)
         check(deliver_spec is not None and
               "evidence_items" in deliver_spec["inputSchema"]["properties"],
               "deliver advertises evidence_items")
+
+        propose_spec = next((tool for tool in tools if tool["name"] == "propose_plan"), None)
+        check(propose_spec is not None and
+              "target_environment" in propose_spec["inputSchema"]["properties"],
+              "propose_plan advertises target_environment")
+
+        scenario_spec = next((tool for tool in tools if tool["name"] == "report_scenario"), None)
+        check(scenario_spec is not None and
+              set(scenario_spec["inputSchema"]["required"]) >=
+              {"plan_id", "task_key", "head_sha", "command", "outcome", "evidence_url"},
+              "report_scenario demands the revision, the command and the evidence link")
 
         errored, overview = mcp.tool("board_overview")
         check(not errored, "board_overview answers", str(overview)[:200] if errored else "")
@@ -316,6 +334,73 @@ def run() -> int:
                   isinstance(stored_items[0], dict) and
                   stored_items[0].get("label") == "tests",
                   "the database stores {label, raw} objects", str(raw)[:300])
+
+        status, environment = board.call("POST", "/api/projects/MI/environments", token=human_token,
+                                         body={"name": "production", "url": "https://mise.example.test"})
+        check(status == 201, "the owner registered the production environment",
+              f"HTTP {status} {environment}")
+
+        errored, draft = mcp.tool("propose_plan",
+                                  project="MI",
+                                  outcome="the board tells the owner what was closed",
+                                  scenario="make scenario",
+                                  target_environment="production",
+                                  tasks=[{"key": "T1", "title": "Prepare the closed tab"},
+                                         {"key": "T2", "title": "Show the closed tab"}],
+                                  edges=[{"from": "T1", "to": "T2", "kind": "integration"}])
+        check(not errored and draft.get("target_environment") == "production",
+              "propose_plan carries the target environment the owner will approve",
+              str(draft)[:300])
+        if not errored:
+            check(draft.get("link", "").endswith(f"#draft/{draft['id']}"),
+                  "the proposal comes back with its link", str(draft.get("link")))
+
+            status, approved = board.call("POST", f"/api/plan-drafts/{draft['id']}/approve",
+                                          token=human_token,
+                                          headers={"If-Match": f'"{draft["version"]}"'})
+            check(status == 200 and approved.get("plan_id"),
+                  "the owner approves the version he saw", f"HTTP {status} {approved}")
+            plan_id = int(approved.get("plan_id") or 0)
+
+            errored, plan = mcp.tool("get_plan", plan_id=plan_id)
+            check(not errored and bool(plan.get("target_environment") == "production" and
+                                       plan.get("scenario") == "make scenario"),
+                  "the plan keeps the approved scenario and environment",
+                  str(plan)[:300])
+            ready = [node for node in (plan.get("nodes") or []) if node.get("state") == "ready"] \
+                if not errored else []
+            check(len(ready) == 1,
+                  "only the root task is claimable after approval",
+                  str([(node.get("task_key"), node.get("state")) for node in (plan.get("nodes") or [])]))
+            root = ready[0]["task_key"] if ready else ""
+
+            if root:
+                errored, error_text = mcp.tool("report_scenario", plan_id=plan_id, task_key=root,
+                                               head_sha="4" * 40, command="make scenario",
+                                               outcome="passed",
+                                               evidence_url="https://example.test/scenario")
+                check(errored, "the scenario cannot be reported before the agent works the card",
+                      str(error_text)[:160])
+
+                errored, lease = mcp.tool("acquire_lease", key=root)
+                check(not errored, f"the agent leases {root}", str(lease)[:200])
+
+                errored, graph = mcp.tool("report_scenario", plan_id=plan_id, task_key=root,
+                                          head_sha="4" * 40, command="make scenario",
+                                          outcome="passed",
+                                          evidence_url="https://example.test/scenario")
+                check(not errored, "the agent reports the scenario while leased",
+                      str(graph)[:300] if not errored else str(graph))
+                check(db_scalar(db_path, "SELECT outcome FROM plan_scenarios WHERE plan_id = ? "
+                                         "AND task_key = ?", (plan_id, root)) == "passed",
+                      "the scenario report is stored against the revision")
+
+                errored, delivered = mcp.tool("deliver", key=root,
+                                              summary="Closed tab behind its own route",
+                                              evidence=["make scenario passed over the integrated app"])
+                check(not errored and delivered["task"]["state"] == "review",
+                      "the delivery follows the scenario",
+                      str(delivered)[:200] if not errored else str(delivered))
 
         errored, text = mcp.tool("move_task", key="XX-0", state="done")
         check(errored and "not_found" in text, "unknown card answers not_found", text[:120])

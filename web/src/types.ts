@@ -215,6 +215,7 @@ export type PlanDraft = {
   policy: { repository: string; branch: string; workflow_id: number }
   outcome: string
   scenario: string
+  target_environment: string
   visible_change: string | null
   visual_review: boolean
   reveal_key: string | null

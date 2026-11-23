@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../api'
-import type { Me, PlanDraft } from '../types'
+import type { DraftEdge, Me, PlanDraft } from '../types'
 
 type Props = {
   me: Me
@@ -64,9 +64,16 @@ export function PlanDraftPage({ me, draftID, onBrowseBoard }: Props) {
 
   const approved = draft.state === 'approved'
   const discarded = draft.state === 'discarded'
-  const waiting = new Map<string, string[]>()
+  const waiting = new Map<string, DraftEdge[]>()
   for (const edge of draft.edges) {
-    waiting.set(edge.to, [...(waiting.get(edge.to) ?? []), edge.from])
+    waiting.set(edge.to, [...(waiting.get(edge.to) ?? []), edge])
+  }
+  const prerequisite = (edges: DraftEdge[]): string => {
+    if (edges.length === 0) {
+      return approved ? 'No prerequisites' : 'Can start together after approval'
+    }
+    const described = edges.map(edge => `${edge.from} to ${waitsOn(edge)}`)
+    return `Waits for ${joinKeys(described)}`
   }
 
   return (
@@ -76,6 +83,11 @@ export function PlanDraftPage({ me, draftID, onBrowseBoard }: Props) {
         <p className="dato">
           {draft.project} · version {draft.version} ·{' '}
           {approved ? 'approved' : discarded ? 'discarded' : 'draft'}
+        </p>
+        <p className="dato">
+          {draft.target_environment
+            ? `Accepts the change in ${draft.target_environment}`
+            : 'No environment was agreed: the change must be serving everywhere the project is deployed'}
         </p>
       </header>
 
@@ -106,11 +118,7 @@ export function PlanDraftPage({ me, draftID, onBrowseBoard }: Props) {
                       {reveals && <span className="propuesta-marca">reveals the change</span>}
                     </p>
                     <p className="propuesta-dependencia">
-                      {waits.length > 0
-                        ? `Waits for ${joinKeys(waits)}`
-                        : approved
-                          ? 'No prerequisites'
-                          : 'Can start together after approval'}
+                      {prerequisite(waits)}
                     </p>
                     {task.acceptance && <p className="propuesta-criterios">{task.acceptance}</p>}
                     {reveals && draft.visual_review && (
@@ -132,7 +140,7 @@ export function PlanDraftPage({ me, draftID, onBrowseBoard }: Props) {
             </p>
             <p className="propuesta-criterios">
               It runs over the integrated application, and the plan closes once the merged revision is
-              serving in every environment.
+              serving in {draft.target_environment ? draft.target_environment : 'every environment'}.
             </p>
           </div>
 
@@ -171,4 +179,8 @@ export function PlanDraftPage({ me, draftID, onBrowseBoard }: Props) {
 function joinKeys(keys: string[]): string {
   if (keys.length <= 1) return keys.join('')
   return `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`
+}
+
+function waitsOn(edge: DraftEdge): string {
+  return edge.kind === 'deployment' ? 'deploy' : 'merge'
 }
