@@ -104,6 +104,29 @@ func TestReadRoutesAllowTheVisitor(t *testing.T) {
 	}
 }
 
+func TestPlanReadsRefuseTheVisitor(t *testing.T) {
+	server := newRouteServer(t)
+	httpServer := httptest.NewServer(server.Handler())
+	t.Cleanup(httpServer.Close)
+
+	for _, path := range []string{"/api/plans", "/api/plan-drafts"} {
+		resp, err := httpServer.Client().Get(httpServer.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		var body struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden || body.Error != "forbidden" {
+			t.Fatalf("GET %s status = %d error = %q, want 403 forbidden", path, resp.StatusCode, body.Error)
+		}
+	}
+}
+
 func TestMutationsStillRequireACredential(t *testing.T) {
 	server := newRouteServer(t)
 	httpServer := httptest.NewServer(server.Handler())
@@ -124,7 +147,6 @@ func TestMutationsStillRequireACredential(t *testing.T) {
 		{http.MethodPatch, "/api/projects/NOPE-1"},
 		{http.MethodPost, "/api/tasks/NOPE-1/submissions"},
 		{http.MethodPost, "/api/plans"},
-		{http.MethodGet, "/api/plans"},
 		{http.MethodGet, "/api/plans/1"},
 		{http.MethodPost, "/api/plans/1/cancel"},
 		{http.MethodPost, "/api/plans/1/scenario"},

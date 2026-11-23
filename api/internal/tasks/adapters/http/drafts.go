@@ -142,6 +142,22 @@ func (h *Drafts) Draft(w http.ResponseWriter, r *http.Request) {
 	httpserver.WriteJSON(w, http.StatusOK, draft)
 }
 
+func (h *Drafts) List(w http.ResponseWriter, r *http.Request) {
+	principal, ok := authenticated(w, r)
+	if !ok {
+		return
+	}
+	drafts, err := h.store.ListDrafts(r.Context(), actorOf(principal), r.URL.Query().Get("project"))
+	if err != nil {
+		httpserver.WriteRuleError(w, err)
+		return
+	}
+	if drafts == nil {
+		drafts = []app.PlanDraftSummary{}
+	}
+	httpserver.WriteJSON(w, http.StatusOK, drafts)
+}
+
 func (h *Drafts) DiscardDraft(w http.ResponseWriter, r *http.Request) {
 	principal, ok := authenticated(w, r)
 	if !ok {
