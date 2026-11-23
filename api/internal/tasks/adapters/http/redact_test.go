@@ -13,12 +13,12 @@ func TestRedactedTextHidesPrivatePaths(t *testing.T) {
 	}{
 		{
 			name: "absolute path between backticks",
-			in:   "`VAULT_DEFAULT` apunta a `/home/hector/Obsidian/Hermes/03 Estudio/Temas/Inglés hablado — B2+ hacia C1.md`: su ruta y el título",
+			in:   "`VAULT_DEFAULT` apunta a `/home/someone/Notas/03 Estudio/Temas/Inglés hablado — B2+ hacia C1.md`: su ruta y el título",
 			want: "`VAULT_DEFAULT` apunta a `<path>`: su ruta y el título",
 		},
 		{
 			name: "home directory alone",
-			in:   "42 commits con `/home/hector` en 357 versiones de fichero",
+			in:   "42 commits con `/home/someone` en 357 versiones de fichero",
 			want: "42 commits con `<path>` en 357 versiones de fichero",
 		},
 		{
@@ -82,12 +82,12 @@ func TestRedactedTextLeavesEmptyAlone(t *testing.T) {
 }
 
 func TestRedactedDeliveryCoversEvidenceItems(t *testing.T) {
-	label := "el repo está en /home/hector/Projects/mise"
+	label := "el repo está en /home/someone/Projects/mise"
 	raw := "`cd ~/Projects/mise && go test ./...`"
 	delivery := redactedDelivery(deliveryJSON{
 		ID:       7,
 		TaskKey:  "MI-7",
-		Summary:  "hecho en /home/hector/tmp",
+		Summary:  "hecho en /home/someone/tmp",
 		Evidence: []string{raw},
 		EvidenceItems: []evidenceItemJSON{
 			{Label: &label, Raw: raw},
@@ -95,11 +95,11 @@ func TestRedactedDeliveryCoversEvidenceItems(t *testing.T) {
 		},
 	})
 
-	if strings.Contains(delivery.Summary, "/home/hector") {
+	if strings.Contains(delivery.Summary, "/home/someone") {
 		t.Fatalf("summary still carries a path: %q", delivery.Summary)
 	}
 	if delivery.EvidenceItems[0].Label == nil ||
-		strings.Contains(*delivery.EvidenceItems[0].Label, "/home/hector") {
+		strings.Contains(*delivery.EvidenceItems[0].Label, "/home/someone") {
 		t.Fatalf("label still carries a path: %v", delivery.EvidenceItems[0].Label)
 	}
 	if !strings.Contains(*delivery.EvidenceItems[0].Label, "<path>") {
@@ -121,7 +121,7 @@ func TestRedactedDeliveryCoversEvidenceItems(t *testing.T) {
 }
 
 func TestRedactedDetailCoversEveryProse(t *testing.T) {
-	notes := "en `/home/hector/Projects/mise` está el repo"
+	notes := "en `/home/someone/Projects/mise` está el repo"
 	acceptance := "corre `~/.local/bin/hermes` y comprueba"
 	reason := "movida desde ~/Projects/mise-mockups"
 
@@ -131,10 +131,10 @@ func TestRedactedDetailCoversEveryProse(t *testing.T) {
 		Deliveries: []deliveryJSON{{
 			ID:       1,
 			TaskKey:  "MI-1",
-			Summary:  "hecho en /home/hector/tmp",
+			Summary:  "hecho en /home/someone/tmp",
 			Evidence: []string{"`ls ~/Projects/mise`", "salida limpia"},
 		}},
-		Comments: []commentJSON{{ID: 1, TaskKey: "MI-1", Body: "mira /home/hector/x"}},
+		Comments: []commentJSON{{ID: 1, TaskKey: "MI-1", Body: "mira /home/someone/x"}},
 	})
 
 	prose := map[string]string{
@@ -147,7 +147,7 @@ func TestRedactedDetailCoversEveryProse(t *testing.T) {
 	}
 
 	for name, value := range prose {
-		if strings.Contains(value, "/home/hector") || strings.Contains(value, "~/") {
+		if strings.Contains(value, "/home/someone") || strings.Contains(value, "~/") {
 			t.Fatalf("%s still carries a private path: %q", name, value)
 		}
 	}
