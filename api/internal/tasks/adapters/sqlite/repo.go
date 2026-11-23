@@ -257,7 +257,7 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 	label := "list projects"
 	query := `
 		SELECT p.key, p.name, p.is_public, p.sort_order, p.description, p.repo_url,
-		       p.demo_url, p.public_state,
+		       p.demo_url, p.public_state, p.required_checks,
 		       COALESCE(t.total, 0), COALESCE(t.cerradas, 0), COALESCE(t.en_curso, 0),
 		       t.ultima
 		FROM projects p
@@ -296,6 +296,7 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 			repoURL     sql.NullString
 			demoURL     sql.NullString
 			publicState sql.NullString
+			requiredRaw string
 			total       int
 			cerradas    int
 			enCurso     int
@@ -303,13 +304,17 @@ func (r *Repo) listProjects(ctx context.Context, scope app.ReadScope, publicOrde
 		)
 		if err := rows.Scan(
 			&project.Key, &project.Name, &isPublic, &project.SortOrder,
-			&description, &repoURL, &demoURL, &publicState,
+			&description, &repoURL, &demoURL, &publicState, &requiredRaw,
 			&total, &cerradas, &enCurso, &lastActive,
 		); err != nil {
 			return nil, fmt.Errorf("%s: scan: %w", label, err)
 		}
 
 		project.IsPublic = isPublic == 1
+		project.RequiredChecks, err = decodeChecks(requiredRaw)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", label, err)
+		}
 		if description.Valid {
 			value := description.String
 			project.Description = &value
@@ -659,10 +664,10 @@ func (r *Repo) Deliver(ctx context.Context, t domain.Task, d domain.Delivery, m 
 			return fmt.Errorf("deliver to %q: encode evidence: %w", t.Key, err)
 		}
 		if _, err := conn.ExecContext(ctx, `
-			INSERT INTO deliveries (task_key, lease_id, summary, evidence, pr_url, created_at, actor_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			INSERT INTO deliveries (task_key, lease_id, summary, evidence, pr_url, head_sha, created_at, actor_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			d.TaskKey, nullableInt64(d.LeaseID), d.Summary, string(evidence),
-			nullableText(d.PRURL), d.CreatedAt, d.ActorID); err != nil {
+			nullableText(d.PRURL), nullableText(d.HeadSHA), d.CreatedAt, d.ActorID); err != nil {
 			return fmt.Errorf("deliver to %q: insert delivery: %w", t.Key, err)
 		}
 
@@ -710,7 +715,7 @@ func (r *Repo) ListLeases(ctx context.Context, taskKey string, scope app.ReadSco
 
 func (r *Repo) ListDeliveries(ctx context.Context, taskKey string, scope app.ReadScope) ([]domain.Delivery, error) {
 	query := `
-		SELECT d.id, d.task_key, d.lease_id, d.summary, d.evidence, d.pr_url, d.created_at,
+		SELECT d.id, d.task_key, d.lease_id, d.summary, d.evidence, d.pr_url, d.head_sha, d.created_at,
 		       d.actor_id, u.name, u.kind
 		FROM deliveries d
 		JOIN users u ON u.id = d.actor_id
@@ -1040,12 +1045,13 @@ func scanDelivery(s scanner) (domain.Delivery, error) {
 		leaseID     sql.NullInt64
 		evidenceRaw string
 		prURL       sql.NullString
+		headSHA     sql.NullString
 		actorName   string
 		actorKind   string
 	)
 	if err := s.Scan(
 		&delivery.ID, &delivery.TaskKey, &leaseID, &delivery.Summary,
-		&evidenceRaw, &prURL, &delivery.CreatedAt, &delivery.ActorID, &actorName, &actorKind,
+		&evidenceRaw, &prURL, &headSHA, &delivery.CreatedAt, &delivery.ActorID, &actorName, &actorKind,
 	); err != nil {
 		return domain.Delivery{}, err
 	}
@@ -1061,6 +1067,10 @@ func scanDelivery(s scanner) (domain.Delivery, error) {
 	if prURL.Valid {
 		value := prURL.String
 		delivery.PRURL = &value
+	}
+	if headSHA.Valid {
+		value := headSHA.String
+		delivery.HeadSHA = &value
 	}
 	evidence, items, err := decodeEvidence(evidenceRaw)
 	if err != nil {

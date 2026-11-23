@@ -78,7 +78,9 @@ func run() error {
 
 	clock := systemClock{}
 	tasksRepo := taskssqlite.New(database)
-	tasksService := tasksapp.New(tasksRepo, clock)
+	tasksService := tasksapp.NewWithChecks(tasksRepo, clock, githubChecks{client: githubinfo.New(githubinfo.Options{
+		VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
+	})})
 	usersService := usersapp.New(userssqlite.New(database), clock)
 
 	devPrincipal := httpserver.DevPrincipalFromEnv()
@@ -156,6 +158,7 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
 	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)
 	server.HandleFunc("POST /api/projects", false, tasksHandler.CreateProject)
+	server.HandleFunc("PATCH /api/projects/{key}", false, tasksHandler.PatchProject)
 	server.HandleReadFunc("GET /api/board", tasksHandler.Board)
 	server.HandleReadFunc("GET /api/tasks", tasksHandler.List)
 	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)
@@ -168,6 +171,7 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleFunc("DELETE /api/tasks/{key}/leases/{id}", false, tasksHandler.ReleaseLease)
 	server.HandleReadFunc("GET /api/tasks/{key}/deliveries", tasksHandler.ListDeliveries)
 	server.HandleFunc("POST /api/tasks/{key}/deliveries", false, tasksHandler.CreateDelivery)
+	server.HandleFunc("POST /api/tasks/{key}/submissions", false, tasksHandler.CreateSubmission)
 	server.HandleReadFunc("GET /api/tasks/{key}/anchors", tasksHandler.Anchors)
 	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
 	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)

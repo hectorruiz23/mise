@@ -14,6 +14,9 @@ const (
 	CodeStaleVersion         = kernel.CodeStaleVersion
 	CodePreconditionRequired = kernel.CodePreconditionRequired
 	CodeInvalidInput         = kernel.CodeInvalidInput
+	CodeConflict             = kernel.CodeConflict
+	CodeChecksFailed         = kernel.CodeChecksFailed
+	CodeChecksPending        = kernel.CodeChecksPending
 	CodeNotFound             = kernel.CodeNotFound
 	CodeSignupPending        = kernel.CodeSignupPending
 	CodeSignupConsumed       = kernel.CodeSignupConsumed
