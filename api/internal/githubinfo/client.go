@@ -36,24 +36,26 @@ type Clock interface {
 }
 
 type Options struct {
-	BaseURL    string
-	Repository string
-	HTTPClient *http.Client
-	Clock      Clock
-	Budget     int
-	Window     time.Duration
-	TTL        time.Duration
-	Timeout    time.Duration
+	VerificationToken string
+	BaseURL           string
+	Repository        string
+	HTTPClient        *http.Client
+	Clock             Clock
+	Budget            int
+	Window            time.Duration
+	TTL               time.Duration
+	Timeout           time.Duration
 }
 
 type Client struct {
-	baseURL     string
-	repository  string
-	httpClient  *http.Client
-	clock       Clock
-	budgetLimit int
-	window      int64
-	ttl         int64
+	verificationToken string
+	baseURL           string
+	repository        string
+	httpClient        *http.Client
+	clock             Clock
+	budgetLimit       int
+	window            int64
+	ttl               int64
 
 	mu           sync.Mutex
 	budgetTimes  []int64
@@ -133,15 +135,16 @@ func New(options Options) *Client {
 	}
 
 	return &Client{
-		baseURL:     baseURL,
-		repository:  repository,
-		httpClient:  httpClient,
-		clock:       clock,
-		budgetLimit: budget,
-		window:      windowSeconds,
-		ttl:         ttlSeconds,
-		cache:       make(map[string]cacheEntry),
-		inflight:    make(map[string]*call),
+		verificationToken: options.VerificationToken,
+		baseURL:           baseURL,
+		repository:        repository,
+		httpClient:        httpClient,
+		clock:             clock,
+		budgetLimit:       budget,
+		window:            windowSeconds,
+		ttl:               ttlSeconds,
+		cache:             make(map[string]cacheEntry),
+		inflight:          make(map[string]*call),
 	}
 }
 
@@ -150,6 +153,10 @@ func (c *Client) Repository() string {
 }
 
 func (c *Client) get(ctx context.Context, path string, destination any) error {
+	return c.getWithToken(ctx, path, destination, "")
+}
+
+func (c *Client) getWithToken(ctx context.Context, path string, destination any, token string) error {
 	if err := c.reserve(); err != nil {
 		return err
 	}
@@ -157,6 +164,9 @@ func (c *Client) get(ctx context.Context, path string, destination any) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return &fetchError{reason: ReasonUpstreamError}
+	}
+	if token != "" {
+		request.Header.Set("Authorization", "Bearer "+token)
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
 	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")

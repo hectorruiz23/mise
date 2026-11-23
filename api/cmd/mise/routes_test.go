@@ -36,7 +36,8 @@ func newRouteServer(t *testing.T) *httpserver.Server {
 	}
 
 	usersService := usersapp.New(userssqlite.New(database), routeClock{})
-	tasksService := tasksapp.New(taskssqlite.New(database), routeClock{})
+	tasksRepo := taskssqlite.New(database)
+	tasksService := tasksapp.New(tasksRepo, routeClock{})
 	server, err := httpserver.New(httpserver.Options{
 		DB:            database,
 		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -47,7 +48,8 @@ func newRouteServer(t *testing.T) *httpserver.Server {
 		t.Fatalf("new server: %v", err)
 	}
 
-	registerRoutes(server, taskshttp.New(tasksService), usershttp.New(usersService, "https://mise.example"))
+	registerRoutes(server, taskshttp.New(tasksService), usershttp.New(usersService, "https://mise.example"),
+		taskshttp.NewDependencyPlans(tasksRepo, tasksapp.PlanPolicy{}, routeClock{}))
 	return server
 }
 
@@ -118,6 +120,9 @@ func TestMutationsStillRequireACredential(t *testing.T) {
 		{http.MethodDelete, "/api/tasks/NOPE-1/leases/1"},
 		{http.MethodPost, "/api/tasks/NOPE-1/deliveries"},
 		{http.MethodPost, "/api/tasks/NOPE-1/comments"},
+		{http.MethodPost, "/api/dependency-plans"},
+		{http.MethodGet, "/api/dependency-plans/NOPE-1"},
+		{http.MethodPost, "/api/dependency-plans/NOPE-1/cancel"},
 		{http.MethodDelete, "/api/sessions/current"},
 	}
 

@@ -409,6 +409,17 @@ func (r *Repo) ListBoardTasks(ctx context.Context, projectKey string, scope app.
 
 func (r *Repo) UpdateTask(ctx context.Context, t domain.Task, m domain.Movement, expectedVersion int64) error {
 	return r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
+		if m.ToState != "" && m.ToState != domain.Backlog {
+			var waiting bool
+			err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM dependency_plans
+				WHERE next_task = ? AND proof IS NULL AND cancelled_at IS NULL)`, t.Key).Scan(&waiting)
+			if err != nil {
+				return err
+			}
+			if waiting {
+				return planConflict("task is waiting for the verified dependency merge")
+			}
+		}
 		result, err := conn.ExecContext(ctx, `
 			UPDATE tasks
 			SET title = ?, notes = ?, acceptance = ?, state = ?, priority = ?,

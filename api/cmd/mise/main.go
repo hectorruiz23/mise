@@ -35,6 +35,7 @@ type config struct {
 	publicOrigin string
 	trustProxy   bool
 	logLevel     slog.Level
+	planPolicy   tasksapp.PlanPolicy
 }
 
 func main() {
@@ -76,7 +77,8 @@ func run() error {
 	logger.Info("database ready", "path", cfg.dbPath, "schema_version", version)
 
 	clock := systemClock{}
-	tasksService := tasksapp.New(taskssqlite.New(database), clock)
+	tasksRepo := taskssqlite.New(database)
+	tasksService := tasksapp.New(tasksRepo, clock)
 	usersService := usersapp.New(userssqlite.New(database), clock)
 
 	devPrincipal := httpserver.DevPrincipalFromEnv()
@@ -98,7 +100,8 @@ func run() error {
 
 	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{}))
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
-	registerRoutes(server, tasksHandler, usersHandler)
+	plans := taskshttp.NewDependencyPlans(tasksRepo, cfg.planPolicy, clock)
+	registerRoutes(server, tasksHandler, usersHandler, plans)
 	server.SetFallback(panel.Handler())
 
 	listener, err := net.Listen("tcp", cfg.addr)
@@ -110,6 +113,15 @@ func run() error {
 	httpServer := &http.Server{
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+	if cfg.planPolicy.WorkflowID != 0 {
+		ctx, stop := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		worker := &planWorker{plans: tasksRepo, policy: cfg.planPolicy, clock: clock, github: githubinfo.New(githubinfo.Options{
+			Repository: cfg.planPolicy.Repository, VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
+		})}
+		go func() { defer close(done); worker.run(ctx, logger) }()
+		defer func() { stop(); <-done }()
 	}
 	serveErr := make(chan error, 1)
 	go func() {
@@ -138,7 +150,7 @@ func run() error {
 	}
 }
 
-func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler) {
+func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, usersHandler *usershttp.Handler, plans *taskshttp.DependencyPlans) {
 	server.HandleReadFunc("GET /api/build", buildinfo.Handler())
 	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
@@ -159,6 +171,9 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleReadFunc("GET /api/tasks/{key}/anchors", tasksHandler.Anchors)
 	server.HandleReadFunc("GET /api/tasks/{key}/comments", tasksHandler.ListComments)
 	server.HandleFunc("POST /api/tasks/{key}/comments", false, tasksHandler.CreateComment)
+	server.HandleFunc("POST /api/dependency-plans", false, plans.Approve)
+	server.HandleFunc("GET /api/dependency-plans/{firstTask}", false, plans.Get)
+	server.HandleFunc("POST /api/dependency-plans/{firstTask}/cancel", false, plans.Cancel)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
 	server.HandleFunc("DELETE /api/sessions/current", false, usersHandler.Logout)
 	server.HandleFunc("POST /api/signup-requests", true, usersHandler.RequestSignup)
@@ -193,7 +208,13 @@ func loadConfig(args []string) (config, error) {
 		trustProxy = parsed
 	}
 
+	planPolicy, err := loadPlanPolicy()
+	if err != nil {
+		return config{}, err
+	}
+
 	return config{
+		planPolicy:   planPolicy,
 		addr:         *addr,
 		dbPath:       *dbPath,
 		publicOrigin: os.Getenv("MISE_PUBLIC_ORIGIN"),

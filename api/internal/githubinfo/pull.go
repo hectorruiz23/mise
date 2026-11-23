@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -44,7 +45,16 @@ type pullMeta struct {
 	HeadRef  string
 }
 
+type repositoryIdentity struct {
+	FullName string `json:"full_name"`
+}
+
 type pullResponse struct {
+	MergedAt *time.Time `json:"merged_at"`
+	Base     struct {
+		Ref  string             `json:"ref"`
+		Repo repositoryIdentity `json:"repo"`
+	} `json:"base"`
 	State          string  `json:"state"`
 	Merged         bool    `json:"merged"`
 	MergeCommitSHA *string `json:"merge_commit_sha"`
@@ -60,13 +70,15 @@ type runsResponse struct {
 }
 
 type workflowRun struct {
-	ID         int64   `json:"id"`
-	HeadSHA    string  `json:"head_sha"`
-	HeadBranch string  `json:"head_branch"`
-	Event      string  `json:"event"`
-	Status     string  `json:"status"`
-	Conclusion *string `json:"conclusion"`
-	RunAttempt int     `json:"run_attempt"`
+	WorkflowID int64              `json:"workflow_id"`
+	Repository repositoryIdentity `json:"repository"`
+	ID         int64              `json:"id"`
+	HeadSHA    string             `json:"head_sha"`
+	HeadBranch string             `json:"head_branch"`
+	Event      string             `json:"event"`
+	Status     string             `json:"status"`
+	Conclusion *string            `json:"conclusion"`
+	RunAttempt int                `json:"run_attempt"`
 }
 
 type jobsResponse struct {
