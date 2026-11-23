@@ -111,6 +111,50 @@ func wantRuleCode(t *testing.T, err error, want string) {
 	}
 }
 
+func TestCreateProjectRequiresAutoMergeOptIn(t *testing.T) {
+	ctx := context.Background()
+	database, _ := openMigrated(t)
+	repo := sqlite.New(database)
+	service := newService(database, &manualClock{now: testNow})
+
+	if _, err := service.CreateProject(ctx, app.CreateProjectParams{Key: "NW", Name: "New board", Actor: human()}); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	if autoMerge := projectAutoMerge(t, repo, "NW"); autoMerge {
+		t.Fatal("a new project inherited auto_merge instead of asking the owner")
+	}
+
+	if err := service.UpdateProjectSettings(ctx, human(), "NW", app.ProjectSettings{AutoMerge: boolPointer(true)}); err != nil {
+		t.Fatalf("opt in to auto merge: %v", err)
+	}
+	if autoMerge := projectAutoMerge(t, repo, "NW"); !autoMerge {
+		t.Fatal("the explicit opt-in did not enable auto merge")
+	}
+	if err := service.UpdateProjectSettings(ctx, human(), "NW", app.ProjectSettings{AutoMerge: boolPointer(false)}); err != nil {
+		t.Fatalf("opt out of auto merge: %v", err)
+	}
+	if autoMerge := projectAutoMerge(t, repo, "NW"); autoMerge {
+		t.Fatal("the explicit opt-out did not disable auto merge")
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }
+
+func projectAutoMerge(t *testing.T, repo *sqlite.Repo, key string) bool {
+	t.Helper()
+	projects, err := repo.ListProjects(context.Background(), app.AllProjects)
+	if err != nil {
+		t.Fatalf("list projects: %v", err)
+	}
+	for _, project := range projects {
+		if project.Key == key {
+			return project.AutoMerge
+		}
+	}
+	t.Fatalf("project %s is not listed", key)
+	return false
+}
+
 func TestCreateAllocatesProjectKeys(t *testing.T) {
 	database, _ := openMigrated(t)
 	service := newService(database, &manualClock{now: testNow})

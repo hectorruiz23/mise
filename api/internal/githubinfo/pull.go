@@ -200,6 +200,20 @@ func (c *Client) checks(ctx context.Context, ref Ref, meta Envelope[pullMeta]) E
 	return observed
 }
 
+func (c *Client) PullTarget(ctx context.Context, ref Ref) (Target, error) {
+	var response pullResponse
+	path := repositoryPath(ref.Owner, ref.Repo) + "/pulls/" + strconv.Itoa(ref.Number)
+	if err := c.get(ctx, path, &response); err != nil {
+		return Target{}, err
+	}
+	repository := strings.TrimSpace(response.Base.Repo.FullName)
+	branch := strings.TrimSpace(response.Base.Ref)
+	if repository == "" || branch == "" {
+		return Target{}, &fetchError{reason: ReasonUpstreamError}
+	}
+	return Target{Repository: repository, Base: branch}, nil
+}
+
 func (c *Client) listRuns(ctx context.Context, ref Ref, sha string) ([]workflowRun, error) {
 	base := repositoryPath(ref.Owner, ref.Repo) + "/actions/runs"
 	runs := make([]workflowRun, 0)

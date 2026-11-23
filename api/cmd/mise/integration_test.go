@@ -45,6 +45,8 @@ type githubStub struct {
 	mergeMessage string
 	fileReads    int
 	merges       int
+	baseRepo     string
+	base         string
 }
 
 func (s *githubStub) handler() http.HandlerFunc {
@@ -59,6 +61,15 @@ func (s *githubStub) handler() http.HandlerFunc {
 				files = append(files, map[string]string{"filename": name})
 			}
 			writeJSON(w, http.StatusOK, files)
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pulls/"):
+			writeJSON(w, http.StatusOK, map[string]any{
+				"state": "open",
+				"base": map[string]any{
+					"ref":  s.base,
+					"repo": map[string]string{"full_name": s.baseRepo},
+				},
+				"head": map[string]string{"sha": headCommit, "ref": "feature"},
+			})
 		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/merge"):
 			s.merges++
 			if s.mergeStatus != 0 {
@@ -150,7 +161,7 @@ func newIntegrationFixture(t *testing.T) *integrationFixture {
 		t.Fatalf("configure project: %v", err)
 	}
 
-	github := &githubStub{mergeSHA: mergeCommit}
+	github := &githubStub{mergeSHA: mergeCommit, baseRepo: "example/project", base: "main"}
 	githubServer := httptest.NewServer(github.handler())
 	t.Cleanup(githubServer.Close)
 
@@ -172,6 +183,7 @@ func newIntegrationFixture(t *testing.T) *integrationFixture {
 		clock:  clock,
 		client: &http.Client{Timeout: time.Second},
 		owned:  githubinfo.DefaultRepository,
+		target: githubinfo.Target{Repository: "example/project", Base: "main"},
 	}
 
 	return &integrationFixture{
@@ -410,6 +422,81 @@ func TestOnlyDispatchedCardsCloseThemselves(t *testing.T) {
 	}
 	if attempts := f.mergeAttempts(t, task.Key); len(attempts) != 0 {
 		t.Fatalf("merge attempts = %+v, want none", attempts)
+	}
+}
+
+func TestAutoMergeRefusesAnotherBaseBranch(t *testing.T) {
+	f := newIntegrationFixture(t)
+	f.github.base = "develop"
+	task := f.newCard(t, "Ship against the wrong branch")
+	f.deliverAsAgent(t, task.Key, "https://github.com/example/project/pull/31")
+
+	f.poll(t)
+
+	if state := f.state(t, task.Key); state != domain.Review {
+		t.Fatalf("state = %q, want review", state)
+	}
+	if reads, merges := f.github.counts(); merges != 0 {
+		t.Fatalf("GitHub reads = %d and merges = %d, want no merge", reads, merges)
+	}
+	attempts := f.mergeAttempts(t, task.Key)
+	if len(attempts) != 1 || attempts[0].outcome != app.MergeOutcomeRefused {
+		t.Fatalf("merge attempts = %+v, want one refusal", attempts)
+	}
+	if !strings.Contains(attempts[0].reason, "develop") || !strings.Contains(attempts[0].reason, "main") {
+		t.Fatalf("reason = %q, want both branches", attempts[0].reason)
+	}
+	bodies := f.commentBodies(t, task.Key)
+	if len(bodies) != 1 || !strings.Contains(bodies[0], "develop") {
+		t.Fatalf("comments = %+v, want the refused base", bodies)
+	}
+	f.poll(t)
+	if _, merges := f.github.counts(); merges != 0 {
+		t.Fatalf("a later poll merged %d times, want none", merges)
+	}
+}
+
+func TestAutoMergeRefusesAnotherRepository(t *testing.T) {
+	f := newIntegrationFixture(t)
+	f.github.baseRepo = "someone/fork"
+	task := f.newCard(t, "Ship from a fork")
+	f.deliverAsAgent(t, task.Key, "https://github.com/example/project/pull/32")
+
+	f.poll(t)
+
+	if state := f.state(t, task.Key); state != domain.Review {
+		t.Fatalf("state = %q, want review", state)
+	}
+	if _, merges := f.github.counts(); merges != 0 {
+		t.Fatalf("merge calls = %d, want none", merges)
+	}
+	attempts := f.mergeAttempts(t, task.Key)
+	if len(attempts) != 1 || attempts[0].outcome != app.MergeOutcomeRefused {
+		t.Fatalf("merge attempts = %+v, want one refusal", attempts)
+	}
+	if !strings.Contains(attempts[0].reason, "someone/fork") {
+		t.Fatalf("reason = %q, want the unauthorized repository", attempts[0].reason)
+	}
+}
+
+func TestAutoMergeWithoutAnAuthorizedDestinationMergesNothing(t *testing.T) {
+	f := newIntegrationFixture(t)
+	f.worker.target = githubinfo.Target{}
+	task := f.newCard(t, "No destination configured")
+	f.deliverAsAgent(t, task.Key, "https://github.com/example/project/pull/33")
+
+	if err := f.worker.poll(f.ctx); err == nil {
+		t.Fatal("a worker without an authorized destination reported success")
+	}
+
+	if state := f.state(t, task.Key); state != domain.Review {
+		t.Fatalf("state = %q, want review", state)
+	}
+	if _, merges := f.github.counts(); merges != 0 {
+		t.Fatalf("merge calls = %d, want none", merges)
+	}
+	if attempts := f.mergeAttempts(t, task.Key); len(attempts) != 0 {
+		t.Fatalf("merge attempts = %+v, want none kept", attempts)
 	}
 }
 

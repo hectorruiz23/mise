@@ -126,19 +126,28 @@ func run() error {
 		go func() { defer func() { done <- struct{}{} }(); graph.run(ctx, logger) }()
 		defer func() { stop(); <-done }()
 	}
+	repository := cfg.planPolicy.Repository
+	if repository == "" {
+		repository = githubinfo.DefaultRepository
+	}
 	integration := &integrationWorker{
 		store:  tasksRepo,
 		clock:  clock,
 		client: &http.Client{Timeout: environmentTimeout},
 		owned:  githubinfo.DefaultRepository,
+		target: githubinfo.Target{Repository: repository, Base: cfg.planPolicy.Branch},
 	}
-	if token := os.Getenv("MISE_GITHUB_MERGE_TOKEN"); token != "" {
-		integration.github = githubinfo.New(githubinfo.Options{
-			MergeToken: token, VerificationToken: token, Repository: githubinfo.DefaultRepository,
-		})
-		logger.Info("auto merge enabled", "owned_repository", integration.owned)
-	} else {
+	switch token := os.Getenv("MISE_GITHUB_MERGE_TOKEN"); {
+	case token == "":
 		logger.Info("auto merge disabled", "reason", "MISE_GITHUB_MERGE_TOKEN is not set")
+	case cfg.planPolicy.Branch == "":
+		logger.Info("auto merge disabled", "reason", "MISE_PLAN_BRANCH is not set, so no base branch is authorized")
+	default:
+		integration.github = githubinfo.New(githubinfo.Options{
+			MergeToken: token, VerificationToken: token, Repository: repository,
+		})
+		logger.Info("auto merge enabled", "owned_repository", integration.owned,
+			"authorized_repository", integration.target.Repository, "authorized_base", integration.target.Base)
 	}
 	workerCtx, workerStop := context.WithCancel(context.Background())
 	integrationDone := make(chan struct{})

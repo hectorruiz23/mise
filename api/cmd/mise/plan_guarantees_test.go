@@ -43,6 +43,15 @@ func TestAutoMergeRequiresTheHeadThatPassedChecks(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/files"):
 			writeJSON(w, http.StatusOK, []string{})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/pulls/"):
+			writeJSON(w, http.StatusOK, map[string]any{
+				"state": "open",
+				"base": map[string]any{
+					"ref":  "main",
+					"repo": map[string]string{"full_name": "example/project"},
+				},
+				"head": map[string]string{"sha": headCommit, "ref": "feature"},
+			})
 		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/merge"):
 			var request struct {
 				SHA string `json:"sha"`

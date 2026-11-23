@@ -18,6 +18,11 @@ const (
 
 var ErrMergeTokenMissing = errors.New("merge token is not configured")
 
+type Target struct {
+	Repository string
+	Base       string
+}
+
 type MergeRefusal struct {
 	Status  int
 	Message string
