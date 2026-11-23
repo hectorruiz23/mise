@@ -20,6 +20,7 @@ func (r *Repo) ApproveGraph(
 	tasks []string,
 	edges []domain.PlanEdge,
 	policy app.PlanPolicy,
+	review app.PlanReview,
 	now int64,
 ) (app.PlanGraph, error) {
 	if actor.Kind != domain.Human {
@@ -30,6 +31,29 @@ func (r *Repo) ApproveGraph(
 	}
 	if err := domain.ValidatePlanEdges(tasks, edges); err != nil {
 		return app.PlanGraph{}, err
+	}
+	if strings.TrimSpace(review.Scenario) == "" {
+		return app.PlanGraph{}, invalidInput("a plan needs the acceptance scenario command")
+	}
+	if review.VisualReview {
+		if strings.TrimSpace(review.RevealTask) == "" {
+			return app.PlanGraph{}, invalidInput("a plan with visual review needs the task that reveals it")
+		}
+		if review.VisibleChange == nil || strings.TrimSpace(*review.VisibleChange) == "" {
+			return app.PlanGraph{}, invalidInput("a plan with visual review needs the change that makes it visible")
+		}
+		member := false
+		for _, key := range tasks {
+			if key == review.RevealTask {
+				member = true
+				break
+			}
+		}
+		if !member {
+			return app.PlanGraph{}, invalidInput("the revealing task must belong to the plan")
+		}
+	} else if strings.TrimSpace(review.RevealTask) != "" {
+		return app.PlanGraph{}, invalidInput("only a plan with visual review names a revealing task")
 	}
 	var planID int64
 	err := r.withTx(ctx, func(ctx context.Context, conn *sql.Conn) error {
@@ -71,15 +95,20 @@ func (r *Repo) ApproveGraph(
 			return err
 		}
 		err := conn.QueryRowContext(ctx, `INSERT INTO plans
-			(project_key, repository, branch, workflow_id, approved_by, approved_at, state)
-			VALUES (?, ?, ?, ?, ?, ?, 'active') RETURNING id`,
-			project, policy.Repository, policy.Branch, policy.WorkflowID, actor.ID, now).Scan(&planID)
+			(project_key, repository, branch, workflow_id, approved_by, approved_at, state,
+			 scenario, visible_change, visual_review)
+			VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?) RETURNING id`,
+			project, policy.Repository, policy.Branch, policy.WorkflowID, actor.ID, now,
+			strings.TrimSpace(review.Scenario), nullableText(review.VisibleChange),
+			boolFlag(review.VisualReview)).Scan(&planID)
 		if err != nil {
 			return err
 		}
 		for _, key := range tasks {
+			reveals := review.VisualReview && key == review.RevealTask
 			if _, err := conn.ExecContext(ctx,
-				`INSERT INTO plan_nodes (plan_id, task_key) VALUES (?, ?)`, planID, key); err != nil {
+				`INSERT INTO plan_nodes (plan_id, task_key, reveals) VALUES (?, ?, ?)`,
+				planID, key, boolFlag(reveals)); err != nil {
 				return err
 			}
 		}
@@ -119,10 +148,15 @@ type planQuerier interface {
 func (r *Repo) readGraph(ctx context.Context, q planQuerier, id int64) (app.PlanGraph, error) {
 	var plan app.PlanGraph
 	var cancelledBy, cancelledAt sql.NullInt64
+	var visibleChange sql.NullString
+	var visualReview int
+	var completedAt sql.NullInt64
 	err := q.QueryRowContext(ctx, `SELECT id, project_key, repository, branch, workflow_id,
-		approved_by, approved_at, state, cancelled_by, cancelled_at FROM plans WHERE id = ?`, id).
+		approved_by, approved_at, state, cancelled_by, cancelled_at,
+		scenario, visible_change, visual_review, completed_at FROM plans WHERE id = ?`, id).
 		Scan(&plan.ID, &plan.Project, &plan.Policy.Repository, &plan.Policy.Branch, &plan.Policy.WorkflowID,
-			&plan.ApprovedBy, &plan.ApprovedAt, &plan.State, &cancelledBy, &cancelledAt)
+			&plan.ApprovedBy, &plan.ApprovedAt, &plan.State, &cancelledBy, &cancelledAt,
+			&plan.Scenario, &visibleChange, &visualReview, &completedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return plan, &domain.RuleError{Code: domain.CodeNotFound, Msg: "plan not found"}
 	}
@@ -130,6 +164,21 @@ func (r *Repo) readGraph(ctx context.Context, q planQuerier, id int64) (app.Plan
 		return plan, err
 	}
 	plan.CancelledBy, plan.CancelledAt = cancelledBy.Int64, cancelledAt.Int64
+	plan.VisualReview = visualReview == 1
+	if visibleChange.Valid {
+		value := visibleChange.String
+		plan.VisibleChange = &value
+	}
+	if completedAt.Valid {
+		value := completedAt.Int64
+		plan.CompletedAt = &value
+		plan.State = app.PlanCompleted
+	}
+	approval, err := r.planApproval(ctx, q, id)
+	if err != nil {
+		return plan, err
+	}
+	plan.Approval = approval
 
 	edges, err := r.graphEdges(ctx, q, id)
 	if err != nil {
@@ -153,7 +202,8 @@ func (r *Repo) readGraph(ctx context.Context, q planQuerier, id int64) (app.Plan
 		return plan, err
 	}
 
-	rows, err := q.QueryContext(ctx, `SELECT n.task_key, t.title, t.state, t.acceptance
+	rows, err := q.QueryContext(ctx, `SELECT n.task_key, t.title, t.state, t.acceptance,
+		n.reveals, n.correction, n.origin_evidence
 		FROM plan_nodes n JOIN tasks t ON t.key = n.task_key
 		WHERE n.plan_id = ? ORDER BY n.task_key`, id)
 	if err != nil {
@@ -163,13 +213,21 @@ func (r *Repo) readGraph(ctx context.Context, q planQuerier, id int64) (app.Plan
 	nodes := make([]app.PlanNode, 0)
 	for rows.Next() {
 		var node app.PlanNode
-		var acceptance sql.NullString
-		if err := rows.Scan(&node.Key, &node.Title, &node.State, &acceptance); err != nil {
+		var acceptance, origin sql.NullString
+		var reveals, correction int
+		if err := rows.Scan(&node.Key, &node.Title, &node.State, &acceptance,
+			&reveals, &correction, &origin); err != nil {
 			return plan, err
 		}
 		if acceptance.Valid {
 			value := acceptance.String
 			node.Acceptance = &value
+		}
+		node.Reveals = reveals == 1
+		node.Correction = correction == 1
+		if origin.Valid {
+			value := origin.String
+			node.OriginEvidence = &value
 		}
 		if proof, ok := proofs[node.Key]; ok {
 			node.Proof = &proof
@@ -418,4 +476,25 @@ func (r *Repo) ReleaseGraphTask(
 		return app.PlanGraph{}, err
 	}
 	return r.Graph(ctx, planID)
+}
+
+func (r *Repo) planApproval(ctx context.Context, q planQuerier, planID int64) (*app.PlanApproval, error) {
+	var approval app.PlanApproval
+	err := q.QueryRowContext(ctx, `SELECT task_key, head_sha, reviewer, approved_at
+		FROM plan_approvals WHERE plan_id = ? ORDER BY approved_at DESC LIMIT 1`, planID).
+		Scan(&approval.TaskKey, &approval.HeadSHA, &approval.Reviewer, &approval.ApprovedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &approval, nil
+}
+
+func boolFlag(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

@@ -94,6 +94,7 @@ func newTasksEnvWithGitHub(t *testing.T, githubHandler http.HandlerFunc) *tasksE
 		Clock:   fixedClock{},
 	}))
 	usersHandler := usershttp.New(usersService, testOrigin)
+	graphsHandler := taskshttp.NewGraphs(taskssqlite.New(database), tasksapp.PlanPolicy{}, fixedClock{})
 	server.HandleReadFunc("GET /api/me", usersHandler.Me)
 	server.HandleFunc("GET /api/public/board", true, tasksHandler.PublicBoard)
 	server.HandleReadFunc("GET /api/projects", tasksHandler.Projects)
@@ -101,6 +102,7 @@ func newTasksEnvWithGitHub(t *testing.T, githubHandler http.HandlerFunc) *tasksE
 	server.HandleFunc("PATCH /api/projects/{key}", false, tasksHandler.PatchProject)
 	server.HandleFunc("GET /api/projects/{key}/environments", false, tasksHandler.Environments)
 	server.HandleFunc("POST /api/projects/{key}/environments", false, tasksHandler.AddEnvironment)
+	server.HandleFunc("POST /api/plans/{id}/scenario", false, graphsHandler.ReportScenario)
 	server.HandleReadFunc("GET /api/board", tasksHandler.Board)
 	server.HandleReadFunc("GET /api/tasks", tasksHandler.List)
 	server.HandleFunc("POST /api/tasks", false, tasksHandler.Create)

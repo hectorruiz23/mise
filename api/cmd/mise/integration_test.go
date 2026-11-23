@@ -427,7 +427,7 @@ func TestDeploymentGateWaitsForTheRevision(t *testing.T) {
 	second := f.newCard(t, "Publish the panel")
 	policy := app.PlanPolicy{Repository: "example/project", Branch: "main", WorkflowID: 42}
 	graph, err := f.repo.ApproveGraph(f.ctx, f.owner, []string{first.Key, second.Key},
-		[]domain.PlanEdge{{From: first.Key, To: second.Key, Kind: domain.EdgeDeployment}}, policy, integrationNow)
+		[]domain.PlanEdge{{From: first.Key, To: second.Key, Kind: domain.EdgeDeployment}}, policy, app.PlanReview{Scenario: "make scenario"}, integrationNow)
 	if err != nil {
 		t.Fatalf("approve plan: %v", err)
 	}

@@ -34,8 +34,12 @@ func (h *Graphs) Approve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Tasks []string `json:"tasks"`
-		Edges []struct {
+		Tasks         []string `json:"tasks"`
+		Scenario      string   `json:"scenario"`
+		VisibleChange *string  `json:"visible_change"`
+		VisualReview  bool     `json:"visual_review"`
+		RevealTask    string   `json:"reveal_task"`
+		Edges         []struct {
 			From string `json:"from"`
 			To   string `json:"to"`
 			Kind string `json:"kind"`
@@ -54,7 +58,12 @@ func (h *Graphs) Approve(w http.ResponseWriter, r *http.Request) {
 		edges = append(edges, domain.PlanEdge{From: edge.From, To: edge.To, Kind: kind})
 	}
 	graph, err := h.store.ApproveGraph(r.Context(), actorOf(principal), body.Tasks, edges,
-		h.policy, h.clock.Now())
+		h.policy, app.PlanReview{
+			Scenario:      body.Scenario,
+			VisibleChange: body.VisibleChange,
+			VisualReview:  body.VisualReview,
+			RevealTask:    body.RevealTask,
+		}, h.clock.Now())
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return
@@ -120,6 +129,43 @@ func (h *Graphs) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	graph, err := h.store.CancelGraph(r.Context(), actorOf(principal), id, h.clock.Now())
+	if err != nil {
+		httpserver.WriteRuleError(w, err)
+		return
+	}
+	httpserver.WriteJSON(w, http.StatusOK, graph)
+}
+
+func (h *Graphs) ReportScenario(w http.ResponseWriter, r *http.Request) {
+	principal, ok := authenticated(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		httpserver.WriteError(w, http.StatusBadRequest, kernel.CodeInvalidInput, "plan id must be a positive integer")
+		return
+	}
+	var body struct {
+		TaskKey     string  `json:"task_key"`
+		HeadSHA     string  `json:"head_sha"`
+		Command     string  `json:"command"`
+		Outcome     string  `json:"outcome"`
+		EvidenceURL *string `json:"evidence_url"`
+		Notes       *string `json:"notes"`
+	}
+	if err := decodeStrict(r, &body); err != nil {
+		httpserver.WriteError(w, http.StatusBadRequest, kernel.CodeInvalidInput, "invalid JSON body")
+		return
+	}
+	graph, err := h.store.ReportScenario(r.Context(), actorOf(principal), id, app.ScenarioReport{
+		TaskKey:     body.TaskKey,
+		HeadSHA:     body.HeadSHA,
+		Command:     body.Command,
+		Outcome:     body.Outcome,
+		EvidenceURL: body.EvidenceURL,
+		Notes:       body.Notes,
+	}, h.clock.Now())
 	if err != nil {
 		httpserver.WriteRuleError(w, err)
 		return

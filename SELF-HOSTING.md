@@ -140,10 +140,12 @@ A plan is a graph of two or more tasks that share a project and the configured p
 curl -s -X POST https://mise.example/api/plans \
   -H "Authorization: Bearer $MISE_TOKEN" -H 'Content-Type: application/json' \
   -d '{"tasks":["MI-1","MI-2","MI-3"],
+       "scenario":"make scenario",
        "edges":[{"from":"MI-1","to":"MI-3"},{"from":"MI-2","to":"MI-3"}]}'
 ```
 
-`kind` defaults to `integration`. The approval rejects a cycle, a duplicated edge, a task of another project
+`scenario` is the command that proves the plan works after its deliveries, and it is required: the plan
+cannot be approved without it. `kind` defaults to `integration`. The approval rejects a cycle, a duplicated edge, a task of another project
 and a task that already belongs to a plan. Nodes with no incoming edge move to `ready` in the same
 transaction; every other node waits in `backlog` until all its prerequisites have a verified merge, then
 moves to `ready` exactly once. The reconciler walks nodes, not plans, so one stuck branch does not stop the
@@ -190,6 +192,50 @@ curl -s -X POST https://mise.example/api/projects/MI/environments \
 
 `GET /api/plans/{id}` shows the revision observed in each environment under `deployments`, and the merge under
 `proof` with `origin: "merge"` when Mise performed it.
+
+## Visual review and the acceptance scenario
+
+A plan that changes what the owner sees names, at approval time, the task whose pull request is the only one
+that can make the change visible:
+
+```sh
+curl -s -X POST https://mise.example/api/plans \
+  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+  -d '{"tasks":["MI-1","MI-2","MI-3"],
+       "scenario":"make scenario",
+       "visual_review":true,
+       "visible_change":"the board gains a Done tab",
+       "reveal_task":"MI-3",
+       "edges":[{"from":"MI-1","to":"MI-3"},{"from":"MI-2","to":"MI-3"}]}'
+```
+
+The pull request of `reveal_task` is never merged by Mise, whatever its checks say: the owner merges it. The
+tasks before it merge and deploy on their own. Without feature toggles, that is the boundary between what can
+land early and what cannot.
+
+The agent that works the last task runs `scenario` over the integrated frontend and backend, leaves the tested
+commit, the journey, the result and the instructions in the pull request, and reports it while it still holds
+the lease:
+
+```sh
+curl -s -X POST https://mise.example/api/plans/7/scenario \
+  -H "Authorization: Bearer ***" -H 'Content-Type: application/json' \
+  -d '{"task_key":"MI-3","head_sha":"<40 hex>","command":"make scenario",
+       "outcome":"passed","evidence_url":"https://github.com/owner/repo/pull/12#issuecomment-1"}'
+```
+
+Mise polls the reviews of that pull request. An approval from the owner of the repository, on that same
+commit, is the only manual sign-off: it is stored per revision, so a new commit needs new evidence and a new
+approval. A pending `CHANGES_REQUESTED` review, or a failed scenario, opens a single correction task inside
+the plan, in `ready`, with the evidence linked; the same event twice does not open it twice.
+
+The plan completes when every task is closed, the scenario passed for the revision that was merged, the owner
+approved that revision when the plan asked for visual review, and the merged commit is serving in every
+environment of the project. `GET /api/plans/{id}` reports `state: "completed"` and `completed_at`. A plan
+without visual review needs no approval.
+
+Review polling needs no extra token on a public repository; set `MISE_GITHUB_VERIFICATION_TOKEN` for a private
+one.
 
 ## Required checks and submissions
 

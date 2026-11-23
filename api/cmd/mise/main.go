@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -144,13 +145,21 @@ func run() error {
 	} else {
 		logger.Info("auto merge disabled", "reason", "MISE_GITHUB_MERGE_TOKEN is not set")
 	}
+	reviews := &reviewWorker{store: tasksRepo, clock: clock, github: githubinfo.New(githubinfo.Options{
+		VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
+	})}
 	workerCtx, workerStop := context.WithCancel(context.Background())
-	workerDone := make(chan struct{})
+	var workers sync.WaitGroup
+	workers.Add(2)
 	go func() {
-		defer close(workerDone)
+		defer workers.Done()
 		integration.run(workerCtx, logger)
 	}()
-	defer func() { workerStop(); <-workerDone }()
+	go func() {
+		defer workers.Done()
+		reviews.run(workerCtx, logger)
+	}()
+	defer func() { workerStop(); workers.Wait() }()
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -211,6 +220,7 @@ func registerRoutes(server *httpserver.Server, tasksHandler *taskshttp.Handler, 
 	server.HandleFunc("GET /api/plans", false, graphs.List)
 	server.HandleFunc("GET /api/plans/{id}", false, graphs.Get)
 	server.HandleFunc("POST /api/plans/{id}/cancel", false, graphs.Cancel)
+	server.HandleFunc("POST /api/plans/{id}/scenario", false, graphs.ReportScenario)
 	server.HandleFunc("POST /api/sessions", true, usersHandler.Login)
 	server.HandleFunc("DELETE /api/sessions/current", false, usersHandler.Logout)
 	server.HandleFunc("POST /api/signup-requests", true, usersHandler.RequestSignup)
