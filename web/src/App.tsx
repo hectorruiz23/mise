@@ -146,7 +146,6 @@ export default function App() {
       <>
         <Header
           me={me}
-          plansActive={false}
           onSignIn={() => setScreen('login')}
           onSignOut={() => void signOut()}
         />
@@ -167,7 +166,6 @@ export default function App() {
       <>
         <Header
           me={me}
-          plansActive={false}
           onSignIn={() => setScreen('login')}
           onSignOut={() => void signOut()}
         />
@@ -181,7 +179,6 @@ export default function App() {
       <>
         <Header
           me={me}
-          plansActive
           onSignIn={() => setScreen('login')}
           onSignOut={() => void signOut()}
         />
@@ -198,7 +195,6 @@ export default function App() {
     <>
       <Header
         me={me}
-        plansActive={false}
         onSignIn={() => setScreen('login')}
         onSignOut={() => void signOut()}
       />

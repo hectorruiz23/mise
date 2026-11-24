@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../api'
+import { capabilitiesFor } from '../permissions'
 import { isViewer, type Me, type PlanDraftSummary, type PlanGraph } from '../types'
+import { ViewTabs } from './Views'
 
 type Props = {
   me: Me
   onSignIn: () => void
   onSessionExpired: () => void
+}
+
+function PlansHeader({ me, detail }: { me: Me; detail?: string }) {
+  return (
+    <header className="propuesta-cabecera">
+      <h1>Plans</h1>
+      {detail && <p className="dato">{detail}</p>}
+      <ViewTabs me={me} caps={capabilitiesFor(me)} activeView="plans" />
+    </header>
+  )
 }
 
 export function PlansPage({ me, onSignIn, onSessionExpired }: Props) {
@@ -38,10 +50,7 @@ export function PlansPage({ me, onSignIn, onSessionExpired }: Props) {
   if (isViewer(me)) {
     return (
       <main className="contenedor principal">
-        <header className="propuesta-cabecera">
-          <h1>Plans</h1>
-          <p className="dato">Proposals and plans need a session.</p>
-        </header>
+        <PlansHeader me={me} detail="Proposals and plans need a session." />
         <section className="abertura">
           <div className="propuesta-cuerpo">
             <div>
@@ -63,6 +72,7 @@ export function PlansPage({ me, onSignIn, onSessionExpired }: Props) {
   if (error) {
     return (
       <main className="contenedor principal">
+        <PlansHeader me={me} />
         <p className="error" role="alert">
           {error}
         </p>
@@ -76,6 +86,7 @@ export function PlansPage({ me, onSignIn, onSessionExpired }: Props) {
   if (!loaded) {
     return (
       <main className="contenedor principal">
+        <PlansHeader me={me} />
         <p role="status">Loading plans…</p>
       </main>
     )
@@ -83,16 +94,13 @@ export function PlansPage({ me, onSignIn, onSessionExpired }: Props) {
 
   const pending = drafts.filter(draft => draft.state === 'draft')
   const running = plans.filter(plan => plan.state === 'active')
+  const pendingLabel = `${pending.length} pending ${pending.length === 1 ? 'proposal' : 'proposals'}`
+  const runningLabel = `${running.length} running ${running.length === 1 ? 'plan' : 'plans'}`
+  const summary = `${pendingLabel} · ${runningLabel}`
 
   return (
     <main className="contenedor principal">
-      <header className="propuesta-cabecera">
-        <h1>Plans</h1>
-        <p className="dato">
-          {pending.length} pending {pending.length === 1 ? 'proposal' : 'proposals'} ·{' '}
-          {running.length} running {running.length === 1 ? 'plan' : 'plans'}
-        </p>
-      </header>
+      <PlansHeader me={me} detail={summary} />
 
       <section className="abertura">
         <div className="propuesta-cuerpo">
