@@ -182,7 +182,6 @@ func newIntegrationFixture(t *testing.T) *integrationFixture {
 		github: client,
 		clock:  clock,
 		client: &http.Client{Timeout: time.Second},
-		owned:  githubinfo.DefaultRepository,
 		target: githubinfo.Target{Repository: "example/project", Base: "main"},
 	}
 
@@ -345,6 +344,23 @@ func TestAutoMergeMergesAGreenPullRequest(t *testing.T) {
 	}
 	if !strings.Contains(reason, "https://github.com/example/project/pull/7") {
 		t.Fatalf("movement reason = %q, want the pull request", reason)
+	}
+}
+
+func TestAutoMergeMergesInTheRepositoryTheBoardLivesIn(t *testing.T) {
+	f := newIntegrationFixture(t)
+	f.worker.target = githubinfo.Target{Repository: githubinfo.DefaultRepository, Base: "main"}
+	f.github.baseRepo = githubinfo.DefaultRepository
+	task := f.newCard(t, "Ship the board's own change")
+	f.deliverAsAgent(t, task.Key, "https://github.com/"+githubinfo.DefaultRepository+"/pull/77")
+
+	f.poll(t)
+
+	if state := f.state(t, task.Key); state != domain.Done {
+		t.Fatalf("state = %q, want done", state)
+	}
+	if _, merges := f.github.counts(); merges != 1 {
+		t.Fatalf("merge calls = %d, want 1", merges)
 	}
 }
 
