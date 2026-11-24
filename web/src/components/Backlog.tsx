@@ -54,6 +54,11 @@ function sortRows(tasks: Task[], sort: BacklogSort): Task[] {
   return [...tasks].sort((left, right) => compareTasks(left, right, sort))
 }
 
+function joinKeys(keys: string[]): string {
+  if (keys.length <= 1) return keys.join('')
+  return `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`
+}
+
 export type BacklogProps = {
   caps: Capabilities
   rows: Task[]
@@ -392,6 +397,11 @@ export function Backlog({
                         >
                           {task.title}
                         </button>
+                        {task.waiting_on && task.waiting_on.length > 0 && (
+                          <span className="etiqueta-espera">
+                            Waiting on {joinKeys(task.waiting_on)}
+                          </span>
+                        )}
                       </td>
                       <td className="celda-prioridad">
                         <span

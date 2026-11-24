@@ -387,7 +387,8 @@ h4 { font-size: 14px; }
 .tabla-backlog tbody tr:focus-visible { outline: 2px solid var(--ink); outline-offset: -2px; }
 .tabla-backlog tbody tr.fila-resaltada { background: var(--paper-soft); outline: 2px solid var(--ink); outline-offset: -2px; }
 .abrir-fila { display: block; width: 100%; min-height: 44px; padding: var(--space-1) 0; border: 0; background: var(--color-clear); color: var(--ink); font: inherit; font-weight: 700; line-height: 1.35; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.etiqueta-prioridad { display: inline-block; padding: 1px var(--space-2); border: 1px solid var(--muted-light); color: var(--ink); font: var(--type-data); font-size: 11px; }
+.etiqueta-prioridad, .etiqueta-espera { display: inline-block; padding: 1px var(--space-2); border: 1px solid var(--muted-light); color: var(--ink); font: var(--type-data); font-size: 11px; }
+.etiqueta-espera { margin-top: var(--space-1); }
 .etiqueta-prioridad.alta { border-color: var(--ink); background: var(--ink); color: var(--paper); }
 .etiqueta-prioridad.baja { color: var(--muted-light); }
 .accion-fila { min-height: 36px; padding: var(--space-2); border: 0; background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 700; }
