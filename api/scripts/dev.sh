@@ -33,6 +33,9 @@ MISE_ADDR="127.0.0.1:$port" \
     MISE_DEV_USER="${MISE_DEV_USER:-1}" \
     MISE_DEV_NAME="${MISE_DEV_NAME:-dev}" \
     MISE_LOG_LEVEL="${MISE_LOG_LEVEL:-info}" \
+    MISE_PLAN_REPOSITORY="${MISE_PLAN_REPOSITORY:-dev/dev}" \
+    MISE_PLAN_BRANCH="${MISE_PLAN_BRANCH:-main}" \
+    MISE_PLAN_WORKFLOW_ID="${MISE_PLAN_WORKFLOW_ID:-1}" \
     "$bin" &
 pid=$!
 
@@ -96,6 +99,27 @@ v5=$(move "MI-5" ready 1)
 v4=$(move "MI-4" in_progress "$v4")
 v5=$(move "MI-5" in_progress "$v5")
 echo "dev: dos tarjetas movidas (v$v4, v$v5)"
+
+seed_plan() {
+    local body id version plan
+    body='{"project":"MI","outcome":"A card that cannot start says which card blocks it.","scenario":"make accept","target_environment":"","visual_review":false,"reveal_key":"","tasks":[{"key":"T1","title":"First card of the plan","size":"S"},{"key":"T2","title":"Second card of the plan","size":"S"}],"edges":[{"from":"T1","to":"T2","kind":"integration"}]}'
+    curl -sf -o "$tmp/draft.json" -X POST "$origin/api/plan-drafts" \
+        -H "Origin: $origin" \
+        -H 'Content-Type: application/json' \
+        -d "$body" || { echo "dev: the plan could not be proposed" >&2; return 1; }
+    id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$tmp/draft.json") || return 1
+    version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$tmp/draft.json") || return 1
+    curl -sf -o "$tmp/plan.json" -X POST "$origin/api/plan-drafts/$id/approve" \
+        -H "Origin: $origin" \
+        -H "If-Match: \"$version\"" \
+        -H 'Content-Type: application/json' || { echo "dev: the plan could not be approved" >&2; return 1; }
+    plan=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("plan_id"))' "$tmp/plan.json") || return 1
+    echo "dev: plan $plan seeded, its second card waits for the first"
+}
+
+if [ "${MISE_DEV_SEED_PLAN:-0}" = "1" ]; then
+    seed_plan
+fi
 
 echo
 echo "  tablero:   $origin"
