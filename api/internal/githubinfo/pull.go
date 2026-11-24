@@ -43,6 +43,7 @@ type pullMeta struct {
 	MergeSHA *string
 	HeadSHA  string
 	HeadRef  string
+	MergedBy string
 }
 
 type repositoryIdentity struct {
@@ -58,7 +59,10 @@ type pullResponse struct {
 	State          string  `json:"state"`
 	Merged         bool    `json:"merged"`
 	MergeCommitSHA *string `json:"merge_commit_sha"`
-	Head           struct {
+	MergedBy       *struct {
+		Login string `json:"login"`
+	} `json:"merged_by"`
+	Head struct {
 		SHA string `json:"sha"`
 		Ref string `json:"ref"`
 	} `json:"head"`
@@ -139,6 +143,10 @@ func (c *Client) fetchPullRequest(ctx context.Context, ref Ref) (pullMeta, error
 	if response.Merged {
 		state = "merged"
 	}
+	mergedBy := ""
+	if response.Merged && response.MergedBy != nil {
+		mergedBy = strings.TrimSpace(response.MergedBy.Login)
+	}
 	var mergeSHA *string
 	if response.Merged && response.MergeCommitSHA != nil && strings.TrimSpace(*response.MergeCommitSHA) != "" {
 		value := *response.MergeCommitSHA
@@ -149,7 +157,16 @@ func (c *Client) fetchPullRequest(ctx context.Context, ref Ref) (pullMeta, error
 		MergeSHA: mergeSHA,
 		HeadSHA:  response.Head.SHA,
 		HeadRef:  response.Head.Ref,
+		MergedBy: mergedBy,
 	}, nil
+}
+
+func (c *Client) MergedBy(ctx context.Context, ref Ref) (string, error) {
+	meta, err := c.fetchPullRequest(ctx, ref)
+	if err != nil {
+		return "", err
+	}
+	return meta.MergedBy, nil
 }
 
 func (c *Client) checks(ctx context.Context, ref Ref, meta Envelope[pullMeta]) Envelope[*Checks] {

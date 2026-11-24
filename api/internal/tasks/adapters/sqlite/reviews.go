@@ -62,17 +62,25 @@ func (r *Repo) ReportScenario(
 		if err != nil {
 			return err
 		}
-		if taskState != string(domain.InProgress) {
-			return planConflict("the scenario is reported while the card is in progress")
-		}
-		var leased bool
-		if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM leases
-			WHERE task_key = ? AND agent_id = ? AND released_at IS NULL AND expires_at > ?)`,
-			report.TaskKey, actor.ID, now).Scan(&leased); err != nil {
+		var delivered bool
+		if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries
+			WHERE task_key = ? AND head_sha = ? AND actor_id = ?)`,
+			report.TaskKey, head, actor.ID).Scan(&delivered); err != nil {
 			return err
 		}
-		if !leased {
-			return &domain.RuleError{Code: domain.CodeLeaseRequired, Msg: "the agent needs a live lease it owns"}
+		if !delivered {
+			if taskState != string(domain.InProgress) {
+				return planConflict("the scenario is reported while the card is in progress")
+			}
+			var leased bool
+			if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM leases
+				WHERE task_key = ? AND agent_id = ? AND released_at IS NULL AND expires_at > ?)`,
+				report.TaskKey, actor.ID, now).Scan(&leased); err != nil {
+				return err
+			}
+			if !leased {
+				return &domain.RuleError{Code: domain.CodeLeaseRequired, Msg: "the agent needs a live lease it owns"}
+			}
 		}
 		var existing string
 		err = conn.QueryRowContext(ctx, `SELECT outcome FROM plan_scenarios

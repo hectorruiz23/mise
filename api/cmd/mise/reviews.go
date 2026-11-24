@@ -15,6 +15,7 @@ const (
 
 type reviewer interface {
 	Reviews(context.Context, githubinfo.Ref) ([]githubinfo.Review, error)
+	MergedBy(context.Context, githubinfo.Ref) (string, error)
 }
 
 type reviewWorker struct {
@@ -38,8 +39,19 @@ func (w *reviewWorker) poll(ctx context.Context) error {
 			return err
 		}
 		owner := repositoryOwner(item.Repository)
-		review, ok := latestReviewBy(reviews, owner, item.HeadSHA)
-		if !ok {
+		review, decided := latestReviewBy(reviews, owner, item.HeadSHA)
+		if !decided {
+			mergedBy, err := w.github.MergedBy(ctx, ref)
+			if err != nil {
+				continue
+			}
+			if mergedBy == "" {
+				continue
+			}
+			if _, err := w.store.RecordApproval(ctx, item.PlanID, item.TaskKey, item.HeadSHA,
+				mergedBy, w.clock.Now()); err != nil {
+				return err
+			}
 			continue
 		}
 		switch strings.ToUpper(review.State) {

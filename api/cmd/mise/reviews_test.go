@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -17,11 +18,17 @@ const (
 )
 
 type reviewStub struct {
-	reviews []githubinfo.Review
+	reviews   []githubinfo.Review
+	mergedBy  string
+	mergedErr error
 }
 
 func (s *reviewStub) Reviews(context.Context, githubinfo.Ref) ([]githubinfo.Review, error) {
 	return s.reviews, nil
+}
+
+func (s *reviewStub) MergedBy(context.Context, githubinfo.Ref) (string, error) {
+	return s.mergedBy, s.mergedErr
 }
 
 func (f *integrationFixture) card(t *testing.T, key string) domain.Task {
@@ -220,6 +227,104 @@ func TestFailedScenarioOpensOneCorrection(t *testing.T) {
 	}
 	if again := f.corrections(t, graph.ID); len(again) != 1 {
 		t.Fatalf("corrections after the same event twice = %d, want 1", len(again))
+	}
+}
+
+func TestMergingTheRevealingPullRequestRecordsTheApproval(t *testing.T) {
+	f := newIntegrationFixture(t)
+	first := f.newCard(t, "Prepare the panel")
+	reveal := f.newCard(t, "Show the panel")
+	graph := f.approvePlan(t, []string{first.Key, reveal.Key}, nil, app.PlanReview{
+		Scenario:      "make scenario",
+		VisibleChange: stringPointer("the board gains a Done tab"),
+		VisualReview:  true,
+		RevealTask:    reveal.Key,
+	})
+	f.deliverWithScenario(t, graph.ID, reveal.Key, "https://github.com/example/project/pull/52", app.ScenarioPassed)
+
+	worker := &reviewWorker{
+		store:  f.repo,
+		clock:  f.clock,
+		github: &reviewStub{mergedBy: "hectorruiz23"},
+	}
+	if err := worker.poll(f.ctx); err != nil {
+		t.Fatalf("poll reviews: %v", err)
+	}
+
+	current, err := f.repo.Graph(f.ctx, graph.ID)
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	if current.Approval == nil {
+		t.Fatal("the merge left no approval")
+	}
+	if current.Approval.HeadSHA != headCommit || current.Approval.Reviewer != "hectorruiz23" {
+		t.Fatalf("approval = %+v, want the merge of %s by its author", current.Approval, headCommit)
+	}
+}
+
+func TestAnUnmergedPullRequestIsNotAnApproval(t *testing.T) {
+	f := newIntegrationFixture(t)
+	first := f.newCard(t, "Prepare the panel")
+	reveal := f.newCard(t, "Show the panel")
+	graph := f.approvePlan(t, []string{first.Key, reveal.Key}, nil, app.PlanReview{
+		Scenario:      "make scenario",
+		VisibleChange: stringPointer("the board gains a Done tab"),
+		VisualReview:  true,
+		RevealTask:    reveal.Key,
+	})
+	f.deliverWithScenario(t, graph.ID, reveal.Key, "https://github.com/example/project/pull/53", app.ScenarioPassed)
+
+	worker := &reviewWorker{store: f.repo, clock: f.clock, github: &reviewStub{}}
+	if err := worker.poll(f.ctx); err != nil {
+		t.Fatalf("poll reviews: %v", err)
+	}
+
+	current, err := f.repo.Graph(f.ctx, graph.ID)
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+	if current.Approval != nil {
+		t.Fatalf("an unmerged pull request produced the approval %+v", current.Approval)
+	}
+
+	unreadable := &reviewWorker{store: f.repo, clock: f.clock,
+		github: &reviewStub{mergedErr: errors.New("upstream unavailable")}}
+	if err := unreadable.poll(f.ctx); err != nil {
+		t.Fatalf("an unreadable pull request broke the poll: %v", err)
+	}
+	if again, err := f.repo.Graph(f.ctx, graph.ID); err != nil || again.Approval != nil {
+		t.Fatalf("an unreadable pull request produced the approval %+v (%v)", again.Approval, err)
+	}
+}
+
+func TestTheScenarioCanBeReportedAfterTheCardClosed(t *testing.T) {
+	f := newIntegrationFixture(t)
+	first := f.newCard(t, "Prepare the panel")
+	second := f.newCard(t, "Show the panel")
+	graph := f.approvePlan(t, []string{first.Key, second.Key}, nil, app.PlanReview{Scenario: "make scenario"})
+
+	prURL := "https://github.com/example/project/pull/54"
+	f.deliverAsAgent(t, first.Key, "https://github.com/example/project/pull/55")
+	f.deliverAsAgent(t, second.Key, prURL)
+
+	card := f.card(t, second.Key)
+	if _, err := f.service.Move(f.ctx, second.Key, domain.Done, "", f.owner, card.Version, true); err != nil {
+		t.Fatalf("close the card: %v", err)
+	}
+
+	evidence := prURL + "#issuecomment-9"
+	report := app.ScenarioReport{TaskKey: second.Key, HeadSHA: headCommit,
+		Command: "make scenario", Outcome: app.ScenarioPassed, EvidenceURL: &evidence}
+	if _, err := f.repo.ReportScenario(f.ctx, f.agent, graph.ID, report, f.clock.Now()); err != nil {
+		t.Fatalf("report the scenario of a revision it delivered: %v", err)
+	}
+
+	other := domain.Actor{ID: 3, Kind: domain.Agent, Name: "Other"}
+	if _, err := f.repo.ReportScenario(f.ctx, other, graph.ID, app.ScenarioReport{
+		TaskKey: second.Key, HeadSHA: otherHead, Command: "make scenario",
+		Outcome: app.ScenarioPassed, EvidenceURL: &evidence}, f.clock.Now()); err == nil {
+		t.Fatal("an agent that never delivered that revision reported its scenario")
 	}
 }
 
