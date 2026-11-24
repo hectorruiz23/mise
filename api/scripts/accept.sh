@@ -18,6 +18,7 @@ tmp=$(mktemp -d "${TMPDIR:-/tmp}/mise-accept.XXXXXX" 2>/dev/null) \
         exit 1
     }
 server_pid=""
+github_pid=""
 mkdir -p "$tmp/tmp" "$tmp/gocache" "$tmp/gotmp" || exit 1
 TMPDIR="$tmp/tmp"
 GOCACHE="$tmp/gocache"
@@ -32,6 +33,10 @@ cleanup() {
     if [ -n "${server_pid:-}" ] && kill -0 "$server_pid" 2>/dev/null; then
         kill "$server_pid" 2>/dev/null || true
         wait "$server_pid" 2>/dev/null || true
+    fi
+    if [ -n "${github_pid:-}" ] && kill -0 "$github_pid" 2>/dev/null; then
+        kill "$github_pid" 2>/dev/null || true
+        wait "$github_pid" 2>/dev/null || true
     fi
     rm -rf "$tmp"
 }
@@ -109,45 +114,54 @@ if ! (cd "$api_dir" && CGO_ENABLED=0 go build -o "$tmp/mise" ./cmd/mise); then
     fatal "build failed"
 fi
 
-port=$(python3 -c 'import socket
+free_port() {
+    python3 -c 'import socket
 s = socket.socket()
 s.bind(("127.0.0.1", 0))
 print(s.getsockname()[1])
-s.close()') || fatal "cannot allocate a free TCP port"
+s.close()'
+}
+
+start_server() {
+    MISE_ADDR="127.0.0.1:$port" \
+        MISE_DB="$db" \
+        MISE_PUBLIC_ORIGIN="$origin" \
+        MISE_PLAN_REPOSITORY=example/project \
+        MISE_PLAN_BRANCH=main \
+        MISE_PLAN_WORKFLOW_ID=9 \
+        MISE_GITHUB_API_URL="${1:-}" \
+        MISE_LOG_LEVEL=info \
+        "$tmp/mise" >"$server_log" 2>&1 &
+    server_pid=$!
+
+    local ready=0
+    local deadline=$((SECONDS + 10))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if ! kill -0 "$server_pid" 2>/dev/null; then
+            break
+        fi
+        if code=$(curl -sS --max-time 1 -o "$tmp/health.body" -w '%{http_code}' \
+            "$origin/api/health" 2>/dev/null); then
+            if [ "$code" = "200" ]; then
+                ready=1
+                break
+            fi
+        fi
+        sleep 0.1
+    done
+    if [ "$ready" -ne 1 ]; then
+        echo "FAIL  server did not become healthy within 10 seconds" >&2
+        echo "----- server log -----" >&2
+        cat "$server_log" >&2 || true
+        exit 1
+    fi
+}
+
+port=$(free_port) || fatal "cannot allocate a free TCP port"
 origin="http://127.0.0.1:$port"
 
 echo "Mise acceptance: starting server on $origin"
-MISE_ADDR="127.0.0.1:$port" \
-    MISE_DB="$db" \
-    MISE_PUBLIC_ORIGIN="$origin" \
-    MISE_PLAN_REPOSITORY=example/project \
-    MISE_PLAN_BRANCH=main \
-    MISE_PLAN_WORKFLOW_ID=9 \
-    MISE_LOG_LEVEL=info \
-    "$tmp/mise" >"$server_log" 2>&1 &
-server_pid=$!
-
-ready=0
-deadline=$((SECONDS + 10))
-while [ "$SECONDS" -lt "$deadline" ]; do
-    if ! kill -0 "$server_pid" 2>/dev/null; then
-        break
-    fi
-    if code=$(curl -sS --max-time 1 -o "$tmp/health.body" -w '%{http_code}' \
-        "$origin/api/health" 2>/dev/null); then
-        if [ "$code" = "200" ]; then
-            ready=1
-            break
-        fi
-    fi
-    sleep 0.1
-done
-if [ "$ready" -ne 1 ]; then
-    echo "FAIL  server did not become healthy within 10 seconds" >&2
-    echo "----- server log -----" >&2
-    cat "$server_log" >&2 || true
-    exit 1
-fi
+start_server
 
 human_token=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
 agent_token=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
@@ -640,9 +654,121 @@ else
     fail_check "tasks=$tasks_count deliveries=$deliveries_count movements=$movements_count"
 fi
 
-if [ "$passed" -ne 25 ]; then
-    echo "FAIL  $passed/25 checks passed" >&2
+check_start 26 "A merged revealing pull request records the plan approval"
+plan_head="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+github_port=$(free_port) || fatal "cannot allocate a port for the GitHub double"
+cat >"$tmp/github.py" <<'PY'
+import json
+import sys
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+head = sys.argv[2]
+merge = "b" * 40
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.split("?")[0].endswith("/reviews"):
+            body = b"[]"
+            status = 200
+        elif "/pulls/" in self.path:
+            body = json.dumps({
+                "state": "closed",
+                "merged": True,
+                "merged_by": {"login": "accept-owner"},
+                "head": {"sha": head, "ref": "mi-34"},
+                "base": {"ref": "main", "repo": {"full_name": "example/project"}},
+                "merge_commit_sha": merge,
+            }).encode()
+            status = 200
+        else:
+            body = b'{"message":"not found"}'
+            status = 404
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+PY
+python3 "$tmp/github.py" "$github_port" "$plan_head" >"$tmp/github.log" 2>&1 &
+github_pid=$!
+for ((fake_tick = 0; fake_tick < 100; fake_tick++)); do
+    if curl -sS --max-time 1 -o /dev/null "http://127.0.0.1:$github_port/" 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+done
+if ! kill -0 "$github_pid" 2>/dev/null; then
+    fail_check "the GitHub double did not start"
+fi
+
+start_server "http://127.0.0.1:$github_port"
+approval_plan_body='{"tasks":["MI-2","MI-3"],"scenario":"make accept","visual_review":true,"reveal_task":"MI-3","visible_change":"the merged reveal is approved"}'
+http POST /api/plans -H "$human_auth" -H "$json_ct" \
+    --data-binary "$approval_plan_body" || fail_check "curl failure"
+if [ "$status" != "201" ]; then
+    fail_check "visual plan status=$status body=$body"
+fi
+approval_plan=$(json_value 'd["id"]' 2>/dev/null || true)
+http POST "/api/tasks/MI-3/leases" -H "$agent_auth" -H "$json_ct" \
+    --data-binary '{}' || fail_check "curl failure"
+if [ "$status" != "201" ]; then
+    fail_check "reveal lease status=$status body=$body"
+fi
+approval_lease=$(json_value 'd["id"]' 2>/dev/null || true)
+approval_delivery=$(printf '{"lease_id":%s,"summary":"The revealing change","evidence":["make accept"],"pr_url":"https://github.com/example/project/pull/99","head_sha":"%s"}' "$approval_lease" "$plan_head")
+http POST "/api/tasks/MI-3/deliveries" -H "$agent_auth" -H "$json_ct" \
+    --data-binary "$approval_delivery" || fail_check "curl failure"
+if [ "$status" != "201" ]; then
+    fail_check "reveal delivery status=$status body=$body"
+fi
+
+kill "$server_pid" 2>/dev/null || true
+for ((wait_tick = 0; wait_tick < 100; wait_tick++)); do
+    if ! kill -0 "$server_pid" 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+done
+if kill -0 "$server_pid" 2>/dev/null; then
+    kill -9 "$server_pid" 2>/dev/null || true
+fi
+wait "$server_pid" 2>/dev/null || true
+server_pid=""
+
+start_server "http://127.0.0.1:$github_port"
+approval="None"
+for ((approval_tick = 0; approval_tick < 100; approval_tick++)); do
+    http GET "/api/plans/$approval_plan" -H "$human_auth" || fail_check "curl failure"
+    approval=$(json_value 'd.get("approval")' 2>/dev/null || true)
+    if [ "$approval" != "None" ]; then
+        break
+    fi
+    sleep 0.1
+done
+approval_status=$status
+approval_task=$(json_value 'd["approval"]["task_key"]' 2>/dev/null || true)
+approval_head=$(json_value 'd["approval"]["head_sha"]' 2>/dev/null || true)
+approval_reviewer=$(json_value 'd["approval"]["reviewer"]' 2>/dev/null || true)
+approval_at=$(json_value 'd["approval"]["approved_at"]' 2>/dev/null || true)
+approval_graph=$(json_value 'd["id"]' 2>/dev/null || true)
+if [ "$approval_status" = "200" ] && [ "$approval_graph" = "$approval_plan" ] \
+    && [ "$approval_task" = "MI-3" ] && [ "$approval_head" = "$plan_head" ] \
+    && [ "$approval_reviewer" = "accept-owner" ] && [ "$approval_at" -gt 0 ]; then
+    pass_check "plan $approval_plan approved at $plan_head by $approval_reviewer"
+else
+    fail_check "status=$approval_status plan=$approval_graph task=$approval_task head=$approval_head reviewer=$approval_reviewer approval=$approval body=$body"
+fi
+
+if [ "$passed" -ne 26 ]; then
+    echo "FAIL  $passed/26 checks passed" >&2
     exit 1
 fi
-echo "$passed/25 checks passed"
+echo "$passed/26 checks passed"
 exit 0
