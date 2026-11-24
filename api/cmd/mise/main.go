@@ -132,10 +132,9 @@ func run() error {
 		defer func() { stop(); <-done }()
 	}
 	integration := &integrationWorker{
-		manualRepository: githubinfo.DefaultRepository,
-		store:            tasksRepo,
-		clock:            clock,
-		client:           &http.Client{Timeout: environmentTimeout},
+		store:  tasksRepo,
+		clock:  clock,
+		client: &http.Client{Timeout: environmentTimeout},
 	}
 	switch token := os.Getenv("MISE_GITHUB_MERGE_TOKEN"); {
 	case token == "":
