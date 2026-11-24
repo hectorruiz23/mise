@@ -303,7 +303,7 @@ func (h *Handler) Detail(w nethttp.ResponseWriter, r *nethttp.Request) {
 	}
 
 	body := detailJSON{
-		Task:        taskOf(detail.Task),
+		Task:        detailTaskOf(detail.Task),
 		Movements:   movementsOf(detail.Movements),
 		Leases:      leasesOf(detail.Leases),
 		Deliveries:  deliveriesOf(detail.Deliveries),
@@ -773,6 +773,20 @@ func listTaskOf(task domain.Task) listTaskJSON {
 	return listTaskJSON{taskJSON: taskOf(task), WaitingOn: waitingOn}
 }
 
+type detailTaskJSON struct {
+	taskJSON
+	PlanID    *int64   `json:"plan_id"`
+	WaitingOn []string `json:"waiting_on"`
+}
+
+func detailTaskOf(task domain.Task) detailTaskJSON {
+	waitingOn := task.WaitingOn
+	if waitingOn == nil {
+		waitingOn = []string{}
+	}
+	return detailTaskJSON{taskJSON: taskOf(task), PlanID: task.PlanID, WaitingOn: waitingOn}
+}
+
 type projectJSON struct {
 	Key            string    `json:"key"`
 	Name           string    `json:"name"`
@@ -795,7 +809,7 @@ type createProjectRequest struct {
 }
 
 type detailJSON struct {
-	Task        taskJSON         `json:"task"`
+	Task        detailTaskJSON   `json:"task"`
 	Movements   []movementJSON   `json:"movements"`
 	Leases      []leaseJSON      `json:"leases"`
 	Deliveries  []deliveryJSON   `json:"deliveries"`
