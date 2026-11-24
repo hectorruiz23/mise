@@ -92,6 +92,7 @@ sudo install -o <service-user> -g <service-user> -m 0755 api/build/mise /srv/mis
 | `MISE_PLAN_WORKFLOW_ID` | Numeric GitHub Actions workflow ID that checks pushes to the target branch | empty |
 | `MISE_GITHUB_VERIFICATION_TOKEN` | Optional fine-grained token with read access to pull requests and Actions for private repositories | empty |
 | `MISE_GITHUB_MERGE_TOKEN` | Fine-grained token with write access to pull requests; enables automatic merge. Unset disables it | empty |
+| `MISE_GITHUB_API_URL` | Base URL of the GitHub API; override it for an enterprise host or a local double | `https://api.github.com` |
 
 Set all three `MISE_PLAN_*` variables to enable plan verification. Choose a workflow that runs the required
 checks on each push to the target branch. Protect changes to that workflow and its tests through repository
