@@ -328,6 +328,29 @@ func TestTheScenarioCanBeReportedAfterTheCardClosed(t *testing.T) {
 	}
 }
 
+func TestTheScenarioOfADeliveryMadeByHandIsReportedByTheAgent(t *testing.T) {
+	f := newIntegrationFixture(t)
+	first := f.newCard(t, "Prepare the panel")
+	second := f.newCard(t, "Show the panel")
+	graph := f.approvePlan(t, []string{first.Key, second.Key}, nil, app.PlanReview{Scenario: "make scenario"})
+
+	prURL := "https://github.com/example/project/pull/56"
+	f.deliverAsAgent(t, first.Key, "https://github.com/example/project/pull/57")
+	f.deliverAsOwner(t, second.Key, prURL)
+
+	card := f.card(t, second.Key)
+	if _, err := f.service.Move(f.ctx, second.Key, domain.Done, "", f.owner, card.Version, true); err != nil {
+		t.Fatalf("close the card: %v", err)
+	}
+
+	evidence := prURL + "#issuecomment-1"
+	if _, err := f.repo.ReportScenario(f.ctx, f.agent, graph.ID, app.ScenarioReport{
+		TaskKey: second.Key, HeadSHA: headCommit, Command: "make scenario",
+		Outcome: app.ScenarioPassed, EvidenceURL: &evidence}, f.clock.Now()); err != nil {
+		t.Fatalf("report the scenario of a revision delivered by hand: %v", err)
+	}
+}
+
 func TestChangesRequestedOpensACorrection(t *testing.T) {
 	f := newIntegrationFixture(t)
 	first := f.newCard(t, "Prepare the panel")
