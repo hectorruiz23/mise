@@ -132,7 +132,18 @@ func (r *Repo) CreateTask(ctx context.Context, p app.CreateParams) (domain.Task,
 func (r *Repo) GetTask(ctx context.Context, key string, scope app.ReadScope) (domain.Task, error) {
 	query := `
 		SELECT t.key, t.project_key, t.title, t.notes, t.acceptance, t.state, t.priority, t.size,
-		       t.created_by, t.version, t.created_at, t.updated_at, t.closed_at
+		       t.created_by, t.version, t.created_at, t.updated_at, t.closed_at,
+		       (SELECT n.plan_id FROM plan_nodes n WHERE n.task_key = t.key),
+		       COALESCE((
+		           SELECT json_group_array(e.from_task)
+		           FROM plan_edges e
+		           JOIN plan_nodes n ON n.plan_id = e.plan_id AND n.task_key = e.to_task
+		           JOIN plans p ON p.id = e.plan_id AND p.state = 'active'
+		           WHERE n.task_key = t.key
+		             AND t.state = 'backlog'
+		             AND NOT EXISTS (SELECT 1 FROM plan_proofs pp
+		                             WHERE pp.plan_id = e.plan_id AND pp.task_key = e.from_task)
+		       ), '[]')
 		FROM tasks t`
 	args := make([]any, 0, 1)
 	if scope == app.PublicProjects {
@@ -146,7 +157,9 @@ func (r *Repo) GetTask(ctx context.Context, key string, scope app.ReadScope) (do
 
 	row := r.db.QueryRowContext(ctx, query, args...)
 
-	task, err := scanTask(row)
+	var planID sql.NullInt64
+	var encodedWaiting string
+	task, err := scanTask(row, &planID, &encodedWaiting)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Task{}, &domain.RuleError{
 			Code: app.CodeNotFound,
@@ -156,6 +169,14 @@ func (r *Repo) GetTask(ctx context.Context, key string, scope app.ReadScope) (do
 	if err != nil {
 		return domain.Task{}, fmt.Errorf("get task %q: %w", key, err)
 	}
+	if planID.Valid {
+		value := planID.Int64
+		task.PlanID = &value
+	}
+	if err := json.Unmarshal([]byte(encodedWaiting), &task.WaitingOn); err != nil {
+		return domain.Task{}, fmt.Errorf("get task %q: decode waiting_on: %w", key, err)
+	}
+	slices.Sort(task.WaitingOn)
 
 	return task, nil
 }

@@ -96,7 +96,7 @@ func redactedComments(items []commentJSON) []commentJSON {
 }
 
 func redactedDetail(detail detailJSON) detailJSON {
-	detail.Task = redactedTask(detail.Task)
+	detail.Task.taskJSON = redactedTask(detail.Task.taskJSON)
 	detail.Movements = redactedMovements(detail.Movements)
 	detail.Deliveries = redactedDeliveries(detail.Deliveries)
 	detail.Comments = redactedComments(detail.Comments)
