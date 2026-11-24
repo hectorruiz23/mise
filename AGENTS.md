@@ -17,6 +17,19 @@ that also serves the panel.
 | `mcp/` | A stdio MCP server so agents work the board through tools instead of raw HTTP |
 | `SELF-HOSTING.md` | Build, systemd, reverse proxy, first users, upgrades, backups |
 
+## Routes, from the outside in
+
+Two walks cover almost every card: one for what the API answers, one for what the panel shows. Start from the
+name of the handler, never from the URL you see in the browser.
+
+| Walking | The order |
+|---|---|
+| An HTTP field | the route table in `api/cmd/mise/main.go` → `Handler.<Name>` in `api/internal/tasks/adapters/http/handlers.go` → `Service.<Name>` in `api/internal/tasks/app/service.go` → `Repo.<Name>` in `api/internal/tasks/adapters/sqlite/repo.go` → the test beside each one (`handlers_test.go`, `service_test.go`, `repo_test.go`) |
+| A panel value | `web/src/App.tsx`, which view renders it → `web/src/use<View>.ts`, what that view fetches (`useBacklog.ts`) → `web/src/components/<View>.tsx`, the markup (`Backlog.tsx`) |
+
+Two worked examples: `GET /api/tasks` is `Handler.List` → `Service.List` → `Repo.ListTasks`, and the backlog table
+is `useBacklog` → `Backlog.tsx`. The same shape holds for the rest: find the handler name, then follow it down.
+
 ## No documents are committed
 
 Every change starts from a written spec, but the spec never lands in `main`: the brief for what you are building
@@ -65,26 +78,32 @@ Go 1.27.4 or newer on `PATH`, and Node 26 with npm for the panel. The production
 `CGO_ENABLED=0`. If you keep several Go versions installed, export `GOTOOLCHAIN=local` so the module
 builds with the one you selected instead of downloading another.
 
+When Mise dispatches you, Go and `gofmt` are already on `PATH` and `GOCACHE` points inside your workspace. Do
+not spend a turn looking for a toolchain and do not export `PATH` yourself.
+
 ## How to verify your work
 
-From `api/`:
+From the repository root:
 
 ```sh
-make verify     # gofmt + go vet + go test ./...
+make -C api verify                # gofmt + go vet + go test ./...
+make -C api accept                # the 26 acceptance checks, against a throwaway database
+npm --prefix web run typecheck    # with the next line, whenever you touched the panel
+npm --prefix web run build
 ```
 
-From `web/`, whenever you touched the panel (this is what the pre-commit hook runs too):
+Run them once the change is complete, on the commit you are going to deliver, and paste the **real output**. A
+claim without output is not evidence. Never report success for a command you did not run.
 
-```sh
-npm run typecheck
-```
+The same two API commands run automatically on `git commit` through `api/scripts/pre-commit`, which
+`make -C api install-hooks` links into `.git/hooks/pre-commit`. A rejected commit prints the failing command and
+how to run it by hand.
 
-Run them before you report. Paste the **real output**. A claim without output is not evidence. Never report
-success for a command you did not run.
+## A board to look at
 
-The same two commands run automatically on `git commit` through `api/scripts/pre-commit`, which `make
-install-hooks` links into `.git/hooks/pre-commit`. A rejected commit prints the failing command and how to run it
-by hand.
+`make -C api dev` builds the panel and serves it on a throwaway database, seeded with cards, and prints the origin.
+`MISE_DEV_SEED_PLAN=1` adds a plan whose second card waits for the first, which is the state to look at when the
+card is about dependencies. `MISE_DEV_OPEN=0` keeps a browser from opening. The database dies with the process.
 
 ## If you get stuck
 
