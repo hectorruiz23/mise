@@ -321,6 +321,7 @@ h4 { font-size: 14px; }
 .ficha-meta .sheet-meta { margin-top: var(--space-2); }
 .ficha-meta .sheet-meta dd { display: flex; flex-wrap: wrap; gap: 0 var(--space-1); }
 .ficha-meta .sheet-meta time, .ficha-meta .sheet-meta .relative { white-space: nowrap; }
+.ficha-plan { margin-top: var(--space-2); color: var(--muted-light); font-size: 12px; }
 .movement-route { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 14px; }
 .movement-meta { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin-top: var(--space-1); color: var(--muted-light); font-size: 12px; }
 .movement-reason { margin-top: var(--space-1); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }

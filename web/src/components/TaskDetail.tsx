@@ -12,6 +12,11 @@ import { Movements } from './Movements'
 const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+function joinKeys(keys: string[]): string {
+  if (keys.length <= 1) return keys.join('')
+  return `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`
+}
+
 export type ReviewQueue = {
   position: number
   total: number
@@ -562,6 +567,14 @@ export function TaskDetail({
                     </dd>
                   </div>
                 </dl>
+                {task.plan_id != null && (
+                  <p className="dato ficha-plan">
+                    Plan #{task.plan_id}
+                    {task.waiting_on && task.waiting_on.length > 0 && (
+                      <> · Waiting on {joinKeys(task.waiting_on)}</>
+                    )}
+                  </p>
+                )}
               </section>
 
               <EarlierDeliveries deliveries={earlier} now={now} />

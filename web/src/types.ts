@@ -40,6 +40,7 @@ export type Task = {
   created_at: number
   updated_at: number
   closed_at: number | null
+  plan_id?: number | null
   waiting_on?: string[]
 }
 
