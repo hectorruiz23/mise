@@ -136,7 +136,6 @@ func run() error {
 		store:  tasksRepo,
 		clock:  clock,
 		client: &http.Client{Timeout: environmentTimeout},
-		owned:  githubinfo.DefaultRepository,
 		target: githubinfo.Target{Repository: repository, Base: cfg.planPolicy.Branch},
 	}
 	switch token := os.Getenv("MISE_GITHUB_MERGE_TOKEN"); {
@@ -148,8 +147,8 @@ func run() error {
 		integration.github = githubinfo.New(githubinfo.Options{
 			MergeToken: token, VerificationToken: token, Repository: repository, BaseURL: githubAPIURL,
 		})
-		logger.Info("auto merge enabled", "owned_repository", integration.owned,
-			"authorized_repository", integration.target.Repository, "authorized_base", integration.target.Base)
+		logger.Info("auto merge enabled", "authorized_repository", integration.target.Repository,
+			"authorized_base", integration.target.Base)
 	}
 	workerCtx, workerStop := context.WithCancel(context.Background())
 	integrationDone := make(chan struct{})

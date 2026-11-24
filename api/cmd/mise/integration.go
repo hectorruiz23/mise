@@ -34,7 +34,6 @@ type integrationWorker struct {
 	github merger
 	clock  app.Clock
 	client *http.Client
-	owned  string
 	target githubinfo.Target
 }
 
@@ -95,10 +94,6 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 			Reason:     "the delivery does not link a GitHub pull request",
 		}, w.clock.Now())
 	}
-	if w.owned != "" && strings.EqualFold(ref.Owner+"/"+ref.Repo, w.owned) {
-		return nil
-	}
-
 	destination, err := w.github.PullTarget(ctx, ref)
 	if err != nil {
 		return err
