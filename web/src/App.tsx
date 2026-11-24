@@ -4,14 +4,26 @@ import { isViewer, type Me } from './types'
 import { Header } from './components/Header'
 import { Login } from './components/Login'
 import { Panel } from './components/Panel'
+import { PlanPage } from './components/Plan'
 import { PlanDraftPage } from './components/PlanDraft'
+import { PlansPage } from './components/Plans'
 import { Signup } from './components/Signup'
 
 type Screen = 'panel' | 'login' | 'signup'
 
-function draftFromHash(): number | null {
-  const match = /^#draft\/(\d+)/.exec(location.hash)
-  return match ? Number(match[1]) : null
+type Route =
+  | { kind: 'panel' }
+  | { kind: 'draft'; id: number }
+  | { kind: 'plan'; id: number }
+  | { kind: 'plans' }
+
+function routeFromHash(): Route {
+  const draft = /^#draft\/(\d+)/.exec(location.hash)
+  if (draft) return { kind: 'draft', id: Number(draft[1]) }
+  const plan = /^#plan\/(\d+)/.exec(location.hash)
+  if (plan) return { kind: 'plan', id: Number(plan[1]) }
+  if (location.hash === '#plans') return { kind: 'plans' }
+  return { kind: 'panel' }
 }
 
 export default function App() {
@@ -19,7 +31,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [me, setMe] = useState<Me | null>(null)
   const [screen, setScreen] = useState<Screen>('panel')
-  const [draftID, setDraftID] = useState<number | null>(() => draftFromHash())
+  const [route, setRoute] = useState<Route>(() => routeFromHash())
   const [notice, setNotice] = useState('')
   const attempt = useRef(0)
 
@@ -50,7 +62,7 @@ export default function App() {
   }, [loadMe])
 
   useEffect(() => {
-    const onHash = () => setDraftID(draftFromHash())
+    const onHash = () => setRoute(routeFromHash())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -129,21 +141,54 @@ export default function App() {
 
   const panelKey = isViewer(me) ? 'viewer' : `${me.kind}-${me.id}`
 
-  if (draftID !== null) {
+  if (route.kind === 'draft') {
     return (
       <>
         <Header
           me={me}
+          plansActive={false}
           onSignIn={() => setScreen('login')}
           onSignOut={() => void signOut()}
         />
         <PlanDraftPage
-          key={draftID}
+          key={route.id}
           me={me}
-          draftID={draftID}
+          draftID={route.id}
           onBrowseBoard={() => {
             location.hash = '#board'
           }}
+        />
+      </>
+    )
+  }
+
+  if (route.kind === 'plan') {
+    return (
+      <>
+        <Header
+          me={me}
+          plansActive={false}
+          onSignIn={() => setScreen('login')}
+          onSignOut={() => void signOut()}
+        />
+        <PlanPage key={route.id} planID={route.id} onSessionExpired={sessionExpired} />
+      </>
+    )
+  }
+
+  if (route.kind === 'plans') {
+    return (
+      <>
+        <Header
+          me={me}
+          plansActive
+          onSignIn={() => setScreen('login')}
+          onSignOut={() => void signOut()}
+        />
+        <PlansPage
+          me={me}
+          onSignIn={() => setScreen('login')}
+          onSessionExpired={sessionExpired}
         />
       </>
     )
@@ -153,6 +198,7 @@ export default function App() {
     <>
       <Header
         me={me}
+        plansActive={false}
         onSignIn={() => setScreen('login')}
         onSignOut={() => void signOut()}
       />
