@@ -17,10 +17,6 @@ html { overflow-y: auto; scrollbar-gutter: stable; }
 .nombre-espacio { color: var(--muted-dark); font-size: 14px; }
 .cabecera .enlace-oscuro { margin-left: auto; }
 .sesion { font-size: 14px; }
-.navegacion-cabecera { display: flex; align-items: center; align-self: stretch; }
-.navegacion-cabecera a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-2); border-bottom: 3px solid var(--color-clear); color: var(--muted-dark); font-size: 14px; font-weight: 700; text-decoration: none; }
-.navegacion-cabecera a:hover { color: var(--text); }
-.navegacion-cabecera a[aria-current="page"] { border-bottom-color: var(--accent-detail); color: var(--text); }
 .enlace-oscuro { min-height: 44px; padding: var(--space-2); background: var(--color-clear); border: 0; color: var(--text); font-size: 14px; }
 .principal { padding-block: var(--space-6) var(--space-8); }
 .titulo-tablero { display: grid; grid-template-columns: 11rem max-content minmax(0, 1fr) auto; grid-template-areas: "titulo pestanas total acciones"; align-items: center; gap: var(--space-2) var(--space-4); }
@@ -436,6 +432,7 @@ h4 { font-size: 14px; }
 .propuesta-cabecera { margin-bottom: var(--space-4); }
 .propuesta-cabecera h1 { margin: 0 0 var(--space-1); }
 .propuesta-cabecera .dato { color: var(--muted-light); }
+.propuesta-cabecera .pestanas { margin-top: var(--space-3); }
 .propuesta-cuerpo { display: grid; gap: var(--space-6); padding: var(--space-6); }
 .propuesta-cuerpo h2 {
   margin: 0 0 var(--space-2);

@@ -4,21 +4,21 @@ import type { Me, View } from '../types'
 export type ViewTabsProps = {
   me: Me
   caps: Capabilities
-  activeView: View
-  backlogCount: number | null
-  hasMore: boolean
-  doneCount: number | null
-  doneHasMore: boolean
+  activeView: View | 'plans'
+  backlogCount?: number | null
+  hasMore?: boolean
+  doneCount?: number | null
+  doneHasMore?: boolean
 }
 
 export function ViewTabs({
   me,
   caps,
   activeView,
-  backlogCount,
-  hasMore,
-  doneCount,
-  doneHasMore,
+  backlogCount = null,
+  hasMore = false,
+  doneCount = null,
+  doneHasMore = false,
 }: ViewTabsProps) {
   const closed =
     doneCount === null ? null : doneHasMore ? `${doneCount}+` : String(doneCount)
@@ -39,6 +39,9 @@ export function ViewTabs({
       <a href="#done" aria-current={activeView === 'done' ? 'page' : undefined}>
         Done
         {closed !== null && <span className="dato">{closed}</span>}
+      </a>
+      <a href="#plans" aria-current={activeView === 'plans' ? 'page' : undefined}>
+        Plans
       </a>
     </nav>
   )
