@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"mise/api/internal/kernel"
@@ -186,7 +187,17 @@ func (r *Repo) ListTasks(ctx context.Context, f app.Filter) ([]domain.Task, stri
 	query := strings.Builder{}
 	query.WriteString(`
 		SELECT t.key, t.project_key, t.title, t.notes, t.acceptance, t.state, t.priority, t.size,
-		       t.created_by, t.version, t.created_at, t.updated_at, t.closed_at
+		       t.created_by, t.version, t.created_at, t.updated_at, t.closed_at,
+		       COALESCE((
+		           SELECT json_group_array(e.from_task)
+		           FROM plan_edges e
+		           JOIN plan_nodes n ON n.plan_id = e.plan_id AND n.task_key = e.to_task
+		           JOIN plans p ON p.id = e.plan_id AND p.state = 'active'
+		           WHERE n.task_key = t.key
+		             AND t.state = 'backlog'
+		             AND NOT EXISTS (SELECT 1 FROM plan_proofs pp
+		                             WHERE pp.plan_id = e.plan_id AND pp.task_key = e.from_task)
+		       ), '[]')
 		FROM tasks t`)
 	if f.Scope == app.PublicProjects {
 		query.WriteString(` JOIN projects p ON p.key = t.project_key`)
@@ -220,10 +231,15 @@ func (r *Repo) ListTasks(ctx context.Context, f app.Filter) ([]domain.Task, stri
 
 	tasks := make([]domain.Task, 0, limit)
 	for rows.Next() {
-		task, err := scanTask(rows)
+		var encodedWaiting string
+		task, err := scanTask(rows, &encodedWaiting)
 		if err != nil {
 			return nil, "", fmt.Errorf("list tasks: scan: %w", err)
 		}
+		if err := json.Unmarshal([]byte(encodedWaiting), &task.WaitingOn); err != nil {
+			return nil, "", fmt.Errorf("list tasks: decode waiting_on: %w", err)
+		}
+		slices.Sort(task.WaitingOn)
 		tasks = append(tasks, task)
 	}
 	if err := rows.Err(); err != nil {
@@ -955,7 +971,7 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func scanTask(s scanner) (domain.Task, error) {
+func scanTask(s scanner, extra ...any) (domain.Task, error) {
 	var (
 		task       domain.Task
 		notes      sql.NullString
@@ -965,11 +981,13 @@ func scanTask(s scanner) (domain.Task, error) {
 		size       sql.NullString
 		closedAt   sql.NullInt64
 	)
-	if err := s.Scan(
+	dest := []any{
 		&task.Key, &task.ProjectKey, &task.Title, &notes, &acceptance,
 		&state, &priority, &size, &task.CreatedBy, &task.Version,
 		&task.CreatedAt, &task.UpdatedAt, &closedAt,
-	); err != nil {
+	}
+	dest = append(dest, extra...)
+	if err := s.Scan(dest...); err != nil {
 		return domain.Task{}, err
 	}
 

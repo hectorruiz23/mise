@@ -57,6 +57,7 @@ type Task struct {
 	CreatedAt  int64
 	UpdatedAt  int64
 	ClosedAt   *int64
+	WaitingOn  []string
 }
 
 type Lease struct {

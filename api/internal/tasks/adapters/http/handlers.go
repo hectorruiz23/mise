@@ -174,16 +174,18 @@ func (h *Handler) List(w nethttp.ResponseWriter, r *nethttp.Request) {
 		return
 	}
 
-	items := make([]taskJSON, 0, len(tasks))
+	items := make([]listTaskJSON, 0, len(tasks))
 	for _, task := range tasks {
-		items = append(items, taskOf(task))
+		items = append(items, listTaskOf(task))
 	}
 	if isViewer(principal) {
-		items = redactedTasks(items)
+		for index := range items {
+			items[index].taskJSON = redactedTask(items[index].taskJSON)
+		}
 	}
 	httpserver.WriteJSON(w, nethttp.StatusOK, struct {
-		Tasks      []taskJSON `json:"tasks"`
-		NextCursor string     `json:"next_cursor"`
+		Tasks      []listTaskJSON `json:"tasks"`
+		NextCursor string         `json:"next_cursor"`
 	}{Tasks: items, NextCursor: nextCursor})
 }
 
@@ -756,6 +758,19 @@ type taskJSON struct {
 	CreatedAt  int64   `json:"created_at"`
 	UpdatedAt  int64   `json:"updated_at"`
 	ClosedAt   *int64  `json:"closed_at"`
+}
+
+type listTaskJSON struct {
+	taskJSON
+	WaitingOn []string `json:"waiting_on"`
+}
+
+func listTaskOf(task domain.Task) listTaskJSON {
+	waitingOn := task.WaitingOn
+	if waitingOn == nil {
+		waitingOn = []string{}
+	}
+	return listTaskJSON{taskJSON: taskOf(task), WaitingOn: waitingOn}
 }
 
 type projectJSON struct {
