@@ -117,7 +117,11 @@ func (r *Repo) CreateDraft(
 		if err := requireDraftEnvironment(ctx, conn, strings.TrimSpace(input.Project), input.TargetEnvironment); err != nil {
 			return err
 		}
-		err := conn.QueryRowContext(ctx, `INSERT INTO plan_drafts
+		policy, err := projectPlanPolicy(ctx, conn, strings.TrimSpace(input.Project), policy)
+		if err != nil {
+			return err
+		}
+		err = conn.QueryRowContext(ctx, `INSERT INTO plan_drafts
 			(project_key, author_id, repository, branch, workflow_id, outcome, scenario, target_environment,
 			 visual_review, visible_change, reveal_key, version, state, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'draft', ?, ?) RETURNING id`,
@@ -459,6 +463,10 @@ func (r *Repo) ApproveDraft(
 		if draft.Version != version {
 			return &domain.RuleError{Code: domain.CodeStaleVersion,
 				Msg: fmt.Sprintf("If-Match %d does not match proposal version %d", version, draft.Version)}
+		}
+		policy, err = projectPlanPolicy(ctx, conn, draft.Project, policy)
+		if err != nil {
+			return err
 		}
 		if draft.Policy != policy {
 			return planConflict("the plan verification changed since the proposal; propose it again")

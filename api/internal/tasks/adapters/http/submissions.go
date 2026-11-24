@@ -20,10 +20,11 @@ func (h *Handler) PatchProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		RequiredChecks *[]string `json:"required_checks"`
-		AutoDispatch   *bool     `json:"auto_dispatch"`
-		DispatchLimit  *int      `json:"dispatch_limit"`
-		AutoMerge      *bool     `json:"auto_merge"`
+		GitHub         *app.PlanPolicy `json:"github"`
+		RequiredChecks *[]string       `json:"required_checks"`
+		AutoDispatch   *bool           `json:"auto_dispatch"`
+		DispatchLimit  *int            `json:"dispatch_limit"`
+		AutoMerge      *bool           `json:"auto_merge"`
 	}
 	if err := decodeStrict(r, &body); err != nil {
 		httpserver.WriteError(w, http.StatusBadRequest, kernel.CodeInvalidInput, "invalid JSON body")
@@ -31,6 +32,7 @@ func (h *Handler) PatchProject(w http.ResponseWriter, r *http.Request) {
 	}
 	err := h.service.UpdateProjectSettings(r.Context(), actorOf(principal), r.PathValue("key"),
 		app.ProjectSettings{
+			GitHub:         body.GitHub,
 			RequiredChecks: body.RequiredChecks,
 			AutoDispatch:   body.AutoDispatch,
 			DispatchLimit:  body.DispatchLimit,

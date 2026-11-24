@@ -41,7 +41,7 @@ func (w *graphWorker) poll(ctx context.Context) error {
 		return err
 	}
 	for _, item := range pending {
-		if item.Policy != w.policy {
+		if w.policy.WorkflowID != 0 && item.Policy != w.policy {
 			continue
 		}
 		proof, err := w.github.VerifyMerge(ctx, item.Policy.Repository, item.Policy.Branch,

@@ -748,3 +748,7 @@ func (r *fakeRepo) CountReopens(_ context.Context, _ string) (int, error) {
 func (r *fakeRepo) RecordDelivery(_ context.Context, _ domain.Delivery) error {
 	return nil
 }
+
+func (r *fakeRepo) SetProjectGitHub(context.Context, string, app.PlanPolicy, *bool) error {
+	panic("unexpected GitHub settings update")
+}

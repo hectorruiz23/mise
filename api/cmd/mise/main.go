@@ -78,6 +78,9 @@ func run() error {
 
 	clock := systemClock{}
 	tasksRepo := taskssqlite.New(database)
+	if err := tasksRepo.ImportGitHubPolicy(context.Background(), cfg.planPolicy); err != nil {
+		return err
+	}
 	tasksService := tasksapp.NewWithChecks(tasksRepo, clock, githubChecks{client: githubinfo.New(githubinfo.Options{
 		VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
 	})})
@@ -118,37 +121,30 @@ func run() error {
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	if cfg.planPolicy.WorkflowID != 0 {
+	{
 		ctx, stop := context.WithCancel(context.Background())
 		done := make(chan struct{}, 1)
-		graph := &graphWorker{store: tasksRepo, policy: cfg.planPolicy, clock: clock, github: githubinfo.New(githubinfo.Options{
+		graph := &graphWorker{store: tasksRepo, clock: clock, github: githubinfo.New(githubinfo.Options{
 			Repository: cfg.planPolicy.Repository, VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
 			BaseURL: githubAPIURL,
 		})}
 		go func() { defer func() { done <- struct{}{} }(); graph.run(ctx, logger) }()
 		defer func() { stop(); <-done }()
 	}
-	repository := cfg.planPolicy.Repository
-	if repository == "" {
-		repository = githubinfo.DefaultRepository
-	}
 	integration := &integrationWorker{
-		store:  tasksRepo,
-		clock:  clock,
-		client: &http.Client{Timeout: environmentTimeout},
-		target: githubinfo.Target{Repository: repository, Base: cfg.planPolicy.Branch},
+		manualRepository: githubinfo.DefaultRepository,
+		store:            tasksRepo,
+		clock:            clock,
+		client:           &http.Client{Timeout: environmentTimeout},
 	}
 	switch token := os.Getenv("MISE_GITHUB_MERGE_TOKEN"); {
 	case token == "":
 		logger.Info("auto merge disabled", "reason", "MISE_GITHUB_MERGE_TOKEN is not set")
-	case cfg.planPolicy.Branch == "":
-		logger.Info("auto merge disabled", "reason", "MISE_PLAN_BRANCH is not set, so no base branch is authorized")
 	default:
 		integration.github = githubinfo.New(githubinfo.Options{
-			MergeToken: token, VerificationToken: token, Repository: repository, BaseURL: githubAPIURL,
+			MergeToken: token, VerificationToken: token, BaseURL: githubAPIURL,
 		})
-		logger.Info("auto merge enabled", "authorized_repository", integration.target.Repository,
-			"authorized_base", integration.target.Base)
+		logger.Info("auto merge enabled for configured projects")
 	}
 	workerCtx, workerStop := context.WithCancel(context.Background())
 	integrationDone := make(chan struct{})

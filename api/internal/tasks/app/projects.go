@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net/url"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
@@ -14,7 +15,10 @@ type Environment struct {
 	URL  string `json:"url"`
 }
 
+var githubRepository = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]*/[a-zA-Z0-9_.-]+$`)
+
 type ProjectSettings struct {
+	GitHub         *PlanPolicy
 	RequiredChecks *[]string
 	AutoDispatch   *bool
 	DispatchLimit  *int
@@ -22,7 +26,7 @@ type ProjectSettings struct {
 }
 
 func (p ProjectSettings) Empty() bool {
-	return p.RequiredChecks == nil && p.AutoDispatch == nil && p.DispatchLimit == nil && p.AutoMerge == nil
+	return p.GitHub == nil && p.RequiredChecks == nil && p.AutoDispatch == nil && p.DispatchLimit == nil && p.AutoMerge == nil
 }
 
 func (s *Service) UpdateProjectSettings(
@@ -36,6 +40,11 @@ func (s *Service) UpdateProjectSettings(
 	}
 	if settings.Empty() {
 		return invalidInput("no project setting to change")
+	}
+	if p := settings.GitHub; p != nil {
+		if !githubRepository.MatchString(p.Repository) || strings.HasSuffix(p.Repository, "/.") || strings.HasSuffix(p.Repository, "/..") || p.WorkflowID <= 0 || p.Branch == "" || strings.ContainsAny(p.Branch, " ~^:?*[\\\t\r\n") || strings.Contains(p.Branch, "..") {
+			return invalidInput("provide an owner/repository, branch name and positive workflow ID")
+		}
 	}
 	if settings.RequiredChecks != nil {
 		if err := s.UpdateProjectChecks(ctx, actor, key, *settings.RequiredChecks); err != nil {
@@ -57,6 +66,9 @@ func (s *Service) UpdateProjectSettings(
 		if err := s.UpdateProjectDispatch(ctx, actor, key, enabled, limit); err != nil {
 			return err
 		}
+	}
+	if settings.GitHub != nil {
+		return s.repo.SetProjectGitHub(ctx, key, *settings.GitHub, settings.AutoMerge)
 	}
 	if settings.AutoMerge != nil {
 		if err := s.repo.SetProjectAutoMerge(ctx, key, *settings.AutoMerge); err != nil {

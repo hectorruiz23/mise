@@ -16,7 +16,7 @@ var _ app.IntegrationStore = (*Repo)(nil)
 
 func (r *Repo) PendingMerges(ctx context.Context) ([]app.MergeCandidate, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT t.key, t.project_key, d.id, d.pr_url, d.head_sha, d.actor_id
+		SELECT t.key, t.project_key, d.id, d.pr_url, d.head_sha, d.actor_id,p.github_repository,p.github_branch
 		FROM tasks t
 		JOIN projects p ON p.key = t.project_key
 		JOIN deliveries d ON d.id = (SELECT MAX(id) FROM deliveries WHERE task_key = t.key)
@@ -45,7 +45,7 @@ func (r *Repo) PendingMerges(ctx context.Context) ([]app.MergeCandidate, error) 
 		var candidate app.MergeCandidate
 		var headSHA sql.NullString
 		if err := rows.Scan(&candidate.TaskKey, &candidate.ProjectKey, &candidate.DeliveryID,
-			&candidate.PRURL, &headSHA, &candidate.ActorID); err != nil {
+			&candidate.PRURL, &headSHA, &candidate.ActorID, &candidate.Repository, &candidate.Branch); err != nil {
 			return nil, fmt.Errorf("pending merges: scan: %w", err)
 		}
 		if headSHA.Valid {

@@ -94,7 +94,7 @@ sudo install -o <service-user> -g <service-user> -m 0755 api/build/mise /srv/mis
 | `MISE_GITHUB_MERGE_TOKEN` | Fine-grained token with write access to pull requests; enables automatic merge. Unset disables it | empty |
 | `MISE_GITHUB_API_URL` | Base URL of the GitHub API; override it for an enterprise host or a local double | `https://api.github.com` |
 
-Set all three `MISE_PLAN_*` variables to enable plan verification. Choose a workflow that runs the required
+Select a project in the panel and open its GitHub settings. Save the repository (owner/name), target branch and numeric workflow ID. During an upgrade, Mise copies the three legacy `MISE_PLAN_*` values into unconfigured projects whose stored repository URL matches. While the legacy variables are set, plans and drafts for unconfigured projects continue to use them for verification. Auto-merge requires a project destination. Configure projects without a matching URL in the panel. Remove the legacy variables after checking the imported settings. Both GitHub tokens can cover multiple repositories under the same owner. Choose a workflow that runs the required
 checks on each push to the target branch. Protect changes to that workflow and its tests through repository
 review. Mise verifies the workflow's reported conclusion at the merged commit.
 
@@ -168,7 +168,7 @@ curl -s -X PATCH https://mise.example/api/projects/MI \
   -d '{"auto_merge":false}'
 ```
 
-The switch is on by default. Mise only considers a card that reached `review` through an agent lease, in a
+New projects require an explicit opt-in. Mise only considers a card that reached `review` through an agent lease, in a
 project with required checks, whose latest delivery names a GitHub pull request and whose revision passed
 them. It merges with a squash, so the merge commit is the one the target branch gains, and records that merge
 as the integration proof of the card. Two pull requests are never merged automatically: one that changes

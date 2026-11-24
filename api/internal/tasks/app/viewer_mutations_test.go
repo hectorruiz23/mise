@@ -304,3 +304,7 @@ func (r untouchedRepo) RecordDelivery(_ context.Context, _ domain.Delivery) erro
 	r.touch("RecordDelivery")
 	return nil
 }
+
+func (r untouchedRepo) SetProjectGitHub(context.Context, string, app.PlanPolicy, *bool) error {
+	panic("unexpected GitHub settings update")
+}

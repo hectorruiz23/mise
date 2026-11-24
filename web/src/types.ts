@@ -44,7 +44,7 @@ export type Task = {
   waiting_on?: string[]
 }
 
-export type Project = { key: string; name: string }
+export type Project = { key: string; name: string; auto_merge: boolean; github: { repository: string; branch: string; workflow_id: number } }
 
 export type AuthenticatedMe = {
   id: number
