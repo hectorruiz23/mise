@@ -106,8 +106,8 @@ func run() error {
 	githubAPIURL := os.Getenv("MISE_GITHUB_API_URL")
 	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{BaseURL: githubAPIURL}))
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
-	graphs := taskshttp.NewGraphs(tasksRepo, tasksapp.PlanPolicy{}, clock)
-	drafts := taskshttp.NewDrafts(tasksRepo, tasksapp.PlanPolicy{}, clock)
+	graphs := taskshttp.NewGraphs(tasksRepo, cfg.planPolicy, clock)
+	drafts := taskshttp.NewDrafts(tasksRepo, cfg.planPolicy, clock)
 	registerRoutes(server, tasksHandler, usersHandler, graphs, drafts)
 	server.SetFallback(panel.Handler())
 
