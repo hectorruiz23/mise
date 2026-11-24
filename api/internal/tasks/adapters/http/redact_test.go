@@ -126,7 +126,7 @@ func TestRedactedDetailCoversEveryProse(t *testing.T) {
 	reason := "movida desde ~/Projects/mise-mockups"
 
 	detail := redactedDetail(detailJSON{
-		Task:      taskJSON{Key: "MI-1", Title: "t", Notes: &notes, Acceptance: &acceptance},
+		Task:      detailTaskJSON{taskJSON: taskJSON{Key: "MI-1", Title: "t", Notes: &notes, Acceptance: &acceptance}},
 		Movements: []movementJSON{{TaskKey: "MI-1", ToState: "ready", Reason: &reason}},
 		Deliveries: []deliveryJSON{{
 			ID:       1,
