@@ -64,8 +64,8 @@ func (r *Repo) ReportScenario(
 		}
 		var delivered bool
 		if err := conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deliveries
-			WHERE task_key = ? AND head_sha = ? AND actor_id = ?)`,
-			report.TaskKey, head, actor.ID).Scan(&delivered); err != nil {
+			WHERE task_key = ? AND head_sha = ?)`,
+			report.TaskKey, head).Scan(&delivered); err != nil {
 			return err
 		}
 		if !delivered {
