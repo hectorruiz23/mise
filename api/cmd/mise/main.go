@@ -100,7 +100,8 @@ func run() error {
 		return err
 	}
 
-	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{}))
+	githubAPIURL := os.Getenv("MISE_GITHUB_API_URL")
+	tasksHandler := taskshttp.NewWithAnchors(tasksService, githubinfo.New(githubinfo.Options{BaseURL: githubAPIURL}))
 	usersHandler := usershttp.New(usersService, cfg.publicOrigin)
 	graphs := taskshttp.NewGraphs(tasksRepo, cfg.planPolicy, clock)
 	drafts := taskshttp.NewDrafts(tasksRepo, cfg.planPolicy, clock)
@@ -122,6 +123,7 @@ func run() error {
 		done := make(chan struct{}, 1)
 		graph := &graphWorker{store: tasksRepo, policy: cfg.planPolicy, clock: clock, github: githubinfo.New(githubinfo.Options{
 			Repository: cfg.planPolicy.Repository, VerificationToken: os.Getenv("MISE_GITHUB_VERIFICATION_TOKEN"),
+			BaseURL: githubAPIURL,
 		})}
 		go func() { defer func() { done <- struct{}{} }(); graph.run(ctx, logger) }()
 		defer func() { stop(); <-done }()
@@ -143,7 +145,7 @@ func run() error {
 		logger.Info("auto merge disabled", "reason", "MISE_PLAN_BRANCH is not set, so no base branch is authorized")
 	default:
 		integration.github = githubinfo.New(githubinfo.Options{
-			MergeToken: token, VerificationToken: token, Repository: repository,
+			MergeToken: token, VerificationToken: token, Repository: repository, BaseURL: githubAPIURL,
 		})
 		logger.Info("auto merge enabled", "authorized_repository", integration.target.Repository,
 			"authorized_base", integration.target.Base)
