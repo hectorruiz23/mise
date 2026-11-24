@@ -30,11 +30,12 @@ type merger interface {
 }
 
 type integrationWorker struct {
-	store  app.IntegrationStore
-	github merger
-	clock  app.Clock
-	client *http.Client
-	target githubinfo.Target
+	store            app.IntegrationStore
+	github           merger
+	clock            app.Clock
+	client           *http.Client
+	manualRepository string
+	target           githubinfo.Target
 }
 
 func (w *integrationWorker) run(ctx context.Context, logger *slog.Logger) {
@@ -53,6 +54,7 @@ func (w *integrationWorker) run(ctx context.Context, logger *slog.Logger) {
 }
 
 func (w *integrationWorker) poll(ctx context.Context) error {
+	var mergeErr error
 	if w.github != nil {
 		candidates, err := w.store.PendingMerges(ctx)
 		if err != nil {
@@ -60,7 +62,7 @@ func (w *integrationWorker) poll(ctx context.Context) error {
 		}
 		for _, candidate := range candidates {
 			if err := w.merge(ctx, candidate); err != nil {
-				return err
+				mergeErr = errors.Join(mergeErr, err)
 			}
 		}
 	}
@@ -79,7 +81,7 @@ func (w *integrationWorker) poll(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return mergeErr
 }
 
 func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandidate) error {
@@ -94,14 +96,28 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 			Reason:     "the delivery does not link a GitHub pull request",
 		}, w.clock.Now())
 	}
-	destination, err := w.github.PullTarget(ctx, ref)
-	if err != nil {
-		return err
+	target := w.target
+	if candidate.Repository != "" {
+		target = githubinfo.Target{Repository: candidate.Repository, Base: candidate.Branch}
 	}
-	if !w.authorized() {
+	if target.Repository == "" || target.Base == "" {
 		return errors.New("auto merge has no authorized repository and base branch")
 	}
-	if reason := destinationMismatch(w.target, destination); reason != "" {
+	repository := ref.Owner + "/" + ref.Repo
+	reason := ""
+	switch {
+	case strings.EqualFold(repository, w.manualRepository):
+		reason = "the owner merges Mise itself"
+	case !strings.EqualFold(repository, target.Repository):
+		reason = "it targets " + repository + ", not " + target.Repository
+	default:
+		destination, err := w.github.PullTarget(ctx, ref)
+		if err != nil {
+			return err
+		}
+		reason = destinationMismatch(target, destination)
+	}
+	if reason != "" {
 		return w.store.RecordMergeAttempt(ctx, app.MergeOutcome{
 			DeliveryID: candidate.DeliveryID,
 			TaskKey:    candidate.TaskKey,
@@ -150,10 +166,6 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 		MergeSHA:   sha,
 		ActorID:    candidate.ActorID,
 	}, w.clock.Now())
-}
-
-func (w *integrationWorker) authorized() bool {
-	return strings.TrimSpace(w.target.Repository) != "" && strings.TrimSpace(w.target.Base) != ""
 }
 
 func destinationMismatch(authorized, destination githubinfo.Target) string {

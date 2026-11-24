@@ -1,0 +1,3 @@
+ALTER TABLE projects ADD COLUMN github_repository TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN github_branch TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN github_workflow_id INTEGER NOT NULL DEFAULT 0;

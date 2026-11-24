@@ -29,10 +29,7 @@ func (h *Graphs) Approve(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteError(w, http.StatusForbidden, kernel.CodeForbidden, "only a human may approve a plan")
 		return
 	}
-	if h.policy.WorkflowID == 0 {
-		httpserver.WriteError(w, http.StatusConflict, kernel.CodeConflict, "plan verification is not configured")
-		return
-	}
+
 	var body struct {
 		TargetEnvironment string   `json:"target_environment"`
 		Tasks             []string `json:"tasks"`

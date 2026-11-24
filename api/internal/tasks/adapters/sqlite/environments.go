@@ -75,3 +75,23 @@ func (r *Repo) SetProjectAutoMerge(ctx context.Context, projectKey string, autoM
 	}
 	return nil
 }
+
+func (r *Repo) SetProjectGitHub(ctx context.Context, key string, policy app.PlanPolicy, autoMerge *bool) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE projects SET github_repository=?,github_branch=?,github_workflow_id=?,auto_merge=coalesce(?,auto_merge) WHERE key=?`, policy.Repository, policy.Branch, policy.WorkflowID, autoMerge, key)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err == nil && n == 0 {
+		return &domain.RuleError{Code: domain.CodeNotFound, Msg: "unknown project"}
+	}
+	return err
+}
+
+func (r *Repo) ImportGitHubPolicy(ctx context.Context, p app.PlanPolicy) error {
+	if p.WorkflowID == 0 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE projects SET github_repository=?,github_branch=?,github_workflow_id=? WHERE github_workflow_id=0 AND lower(rtrim(repo_url,'/'))=lower(?)`, p.Repository, p.Branch, p.WorkflowID, "https://github.com/"+p.Repository)
+	return err
+}

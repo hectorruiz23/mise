@@ -49,6 +49,7 @@ type Repo interface {
 	SetProjectChecks(ctx context.Context, projectKey string, checks []string, now int64) error
 	ListEnvironments(ctx context.Context, projectKey string) ([]Environment, error)
 	AddEnvironment(ctx context.Context, projectKey string, environment Environment) error
+	SetProjectGitHub(ctx context.Context, key string, policy PlanPolicy, autoMerge *bool) error
 	SetProjectAutoMerge(ctx context.Context, projectKey string, autoMerge bool) error
 	UpsertSubmission(ctx context.Context, s domain.Submission) (domain.Submission, error)
 	MarkSubmissionDelivered(ctx context.Context, id int64, now int64) error
@@ -126,6 +127,7 @@ type Project struct {
 	RequiredChecks []string
 	AutoDispatch   bool
 	DispatchLimit  int
+	GitHub         PlanPolicy
 	AutoMerge      bool
 	State          string
 	Cards          Cards

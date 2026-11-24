@@ -77,10 +77,7 @@ func (h *Drafts) CreateDraft(w http.ResponseWriter, r *http.Request) {
 		httpserver.WriteError(w, http.StatusForbidden, kernel.CodeForbidden, "viewers cannot propose a plan")
 		return
 	}
-	if h.policy.WorkflowID == 0 {
-		httpserver.WriteError(w, http.StatusConflict, kernel.CodeConflict, "plan verification is not configured")
-		return
-	}
+
 	var body draftBody
 	if err := decodeStrict(r, &body); err != nil {
 		httpserver.WriteError(w, http.StatusBadRequest, kernel.CodeInvalidInput, "invalid JSON body")

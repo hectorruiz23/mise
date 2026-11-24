@@ -120,6 +120,8 @@ export const api = {
 
   logout: () => request<void>('/api/sessions/current', { method: 'DELETE' }),
 
+  updateGitHub: (key: string, settings: Pick<Project, 'github' | 'auto_merge'>) =>
+    request<void>(`/api/projects/${encodeURIComponent(key)}`, { method: 'PATCH', body: JSON.stringify(settings) }),
   projects: () => request<Project[]>('/api/projects'),
 
   planDrafts: (project = '') =>

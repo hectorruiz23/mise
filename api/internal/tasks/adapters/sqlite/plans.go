@@ -26,9 +26,7 @@ func (r *Repo) ApproveGraph(
 	if actor.Kind != domain.Human {
 		return app.PlanGraph{}, &domain.RuleError{Code: domain.CodeForbidden, Msg: "only a human can approve a plan"}
 	}
-	if policy.Repository == "" || policy.Branch == "" || policy.WorkflowID <= 0 {
-		return app.PlanGraph{}, invalidInput("a plan needs a repository, a branch and a workflow")
-	}
+
 	if err := domain.ValidatePlanEdges(tasks, edges); err != nil {
 		return app.PlanGraph{}, err
 	}
@@ -87,6 +85,10 @@ func (r *Repo) ApproveGraph(
 		project := ""
 		for key := range projects {
 			project = key
+		}
+		policy, err := projectPlanPolicy(ctx, conn, project, policy)
+		if err != nil {
+			return err
 		}
 		activated, err := r.activatePlan(ctx, conn, actor.ID, project, tasks, edges, policy, review, now)
 		if err != nil {
@@ -473,4 +475,19 @@ func boolFlag(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func projectPlanPolicy(ctx context.Context, conn *sql.Conn, key string, fallback app.PlanPolicy) (app.PlanPolicy, error) {
+	var p app.PlanPolicy
+	err := conn.QueryRowContext(ctx, `SELECT github_repository,github_branch,github_workflow_id FROM projects WHERE key=?`, key).Scan(&p.Repository, &p.Branch, &p.WorkflowID)
+	if err != nil {
+		return p, err
+	}
+	if p.WorkflowID == 0 {
+		p = fallback
+	}
+	if p.WorkflowID <= 0 || p.Repository == "" || p.Branch == "" {
+		return p, planConflict("configure GitHub verification for this project")
+	}
+	return p, nil
 }

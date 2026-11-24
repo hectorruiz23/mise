@@ -253,6 +253,7 @@ func (h *Handler) Projects(w nethttp.ResponseWriter, r *nethttp.Request) {
 			RequiredChecks: required,
 			AutoDispatch:   project.AutoDispatch,
 			DispatchLimit:  project.DispatchLimit,
+			GitHub:         project.GitHub,
 			AutoMerge:      project.AutoMerge,
 		})
 	}
@@ -788,14 +789,15 @@ func detailTaskOf(task domain.Task) detailTaskJSON {
 }
 
 type projectJSON struct {
-	Key            string    `json:"key"`
-	Name           string    `json:"name"`
-	State          string    `json:"state"`
-	Cards          cardsJSON `json:"cards"`
-	RequiredChecks []string  `json:"required_checks"`
-	AutoDispatch   bool      `json:"auto_dispatch"`
-	DispatchLimit  int       `json:"dispatch_limit"`
-	AutoMerge      bool      `json:"auto_merge"`
+	Key            string         `json:"key"`
+	Name           string         `json:"name"`
+	State          string         `json:"state"`
+	Cards          cardsJSON      `json:"cards"`
+	RequiredChecks []string       `json:"required_checks"`
+	AutoDispatch   bool           `json:"auto_dispatch"`
+	DispatchLimit  int            `json:"dispatch_limit"`
+	GitHub         app.PlanPolicy `json:"github"`
+	AutoMerge      bool           `json:"auto_merge"`
 }
 
 type cardsJSON struct {

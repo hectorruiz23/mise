@@ -9,6 +9,7 @@ import { PAGE_SIZE, useBacklog } from '../useBacklog'
 import { useBoard } from '../useBoard'
 import { DONE_PAGE_SIZE, useDone } from '../useDone'
 import { useProjects } from '../useProjects'
+import { ProjectGitHub } from './ProjectGitHub'
 import { Backlog } from './Backlog'
 import { Board } from './Board'
 import { CreateTask } from './CreateTask'
@@ -454,6 +455,10 @@ export function Panel({ me, onSessionExpired }: { me: Me; onSessionExpired: () =
           {summary}
         </p>
       </div>
+
+      {me.kind === 'human' && projects.filter(item => item.key === project).map(item => (
+        <ProjectGitHub key={item.key} project={item} onSaved={reloadProjects} />
+      ))}
 
       <div
         ref={contentRef}

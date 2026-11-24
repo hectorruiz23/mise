@@ -9,12 +9,13 @@ const (
 )
 
 type MergeCandidate struct {
-	TaskKey    string
-	ProjectKey string
-	DeliveryID int64
-	PRURL      string
-	HeadSHA    *string
-	ActorID    int64
+	Repository, Branch string
+	TaskKey            string
+	ProjectKey         string
+	DeliveryID         int64
+	PRURL              string
+	HeadSHA            *string
+	ActorID            int64
 }
 
 type MergeOutcome struct {
