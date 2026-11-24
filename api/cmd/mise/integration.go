@@ -30,12 +30,11 @@ type merger interface {
 }
 
 type integrationWorker struct {
-	store            app.IntegrationStore
-	github           merger
-	clock            app.Clock
-	client           *http.Client
-	manualRepository string
-	target           githubinfo.Target
+	store  app.IntegrationStore
+	github merger
+	clock  app.Clock
+	client *http.Client
+	target githubinfo.Target
 }
 
 func (w *integrationWorker) run(ctx context.Context, logger *slog.Logger) {
@@ -106,8 +105,6 @@ func (w *integrationWorker) merge(ctx context.Context, candidate app.MergeCandid
 	repository := ref.Owner + "/" + ref.Repo
 	reason := ""
 	switch {
-	case strings.EqualFold(repository, w.manualRepository):
-		reason = "the owner merges Mise itself"
 	case !strings.EqualFold(repository, target.Repository):
 		reason = "it targets " + repository + ", not " + target.Repository
 	default:
