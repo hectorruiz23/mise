@@ -35,6 +35,9 @@ test:
 accept:
 	bash scripts/accept.sh
 
+shots:
+	bash scripts/shots.sh
+
 dev: panel stage-panel
 	@bash scripts/dev.sh
 
