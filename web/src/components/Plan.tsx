@@ -57,16 +57,21 @@ export function PlanPage({ planID, onSessionExpired }: Props) {
     )
   }
 
-  const done = plan.nodes.filter(node => node.state === 'done').length
   const environment = plan.target_environment ?? ''
 
   return (
-    <main className="contenedor principal">
-      <header className="propuesta-cabecera">
-        <h1>Plan #{plan.id}</h1>
-        <p className="dato">
-          {plan.project} · {PLAN_STATE_LABELS[plan.state]} · approved{' '}
-          <time dateTime={isoDate(plan.approved_at)}>{formatDateTime(plan.approved_at)}</time>
+    <main className="contenedor principal plan-page">
+      <header className="plan-heading">
+        <a href="#plans">← Plans</a>
+        <div className="plan-heading-line">
+          <h1>Plan #{plan.id}</h1>
+          <span className="plan-project">{plan.project}</span>
+        </div>
+        <p className="plan-metadata">
+          <strong>{PLAN_STATE_LABELS[plan.state]}</strong>
+          {Number.isFinite(plan.approved_at) && (
+            <span>Approved <time dateTime={isoDate(plan.approved_at)}>{formatDateTime(plan.approved_at)}</time></span>
+          )}
         </p>
       </header>
 
@@ -82,34 +87,21 @@ export function PlanPage({ planID, onSessionExpired }: Props) {
         </p>
       )}
 
-      <section className="abertura">
-        <div className="propuesta-cuerpo">
+      <div className="plan-sheet">
+        <PlanTaskGraph nodes={plan.nodes} edges={plan.edges} />
+        <section className="plan-acceptance">
+          <h2>Acceptance</h2>
           <div>
-            <h2>Acceptance</h2>
-            <p className="propuesta-comando">
-              <code>{plan.scenario}</code>
-            </p>
-            <p className="propuesta-criterios">
+            <code>{plan.scenario}</code>
+            <p>
               {environment
                 ? `The plan closes once the merged revision is serving in ${environment}.`
-                : 'No environment was agreed: the plan closes once the merged revision is serving everywhere the project is deployed.'}
+                : 'No environment was agreed. The plan closes once the merged revision is serving everywhere the project is deployed.'}
             </p>
           </div>
-
-          <div>
-            <h2>Tasks</h2>
-            <p className="propuesta-criterios">
-              {done} of {plan.nodes.length} tasks done.
-            </p>
-            <PlanTaskGraph nodes={plan.nodes} edges={plan.edges} />
-          </div>
-
-          <div className="propuesta-pie">
-            <a href="#plans">Back to plans</a>
-            <a href="#board">Back to the board</a>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
+      <footer className="plan-footer"><a href="#board">Back to the board</a></footer>
     </main>
   )
 }

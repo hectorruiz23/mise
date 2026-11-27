@@ -531,134 +531,107 @@ h4 { font-size: 14px; }
   .propuesta-pie a { display: inline-block; min-height: 44px; margin-right: var(--space-3); }
 }
 
-/* Plan graph: one container per dependency depth, rows inside, curved wires. */
-.plan-graph { min-width: 0; }
-.plan-legend {
+.plan-heading { margin-bottom: var(--space-5); }
+.plan-heading > a, .plan-footer a { color: var(--muted-dark); font-size: 14px; text-decoration: underline; }
+.plan-heading-line, .plan-metadata, .plan-graph-head, .plan-progress, .plan-task-ref {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-4);
-  margin: 0 0 var(--space-3);
-  font: var(--type-data);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-light);
+  align-items: center;
 }
-.plan-legend-item { display: inline-flex; align-items: center; gap: var(--space-2); }
-.plan-legend-item::before { content: ""; width: 24px; border-top: 2px solid var(--muted-light); }
-.plan-legend-item.deployment::before { border-top-style: dashed; }
-.plan-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
-.plan-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
-.plan-canvas { position: relative; display: inline-block; min-width: 100%; }
-.plan-wires { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
-.plan-edge { fill: none; stroke: var(--muted-light); stroke-width: 2; stroke-linecap: round; }
-.plan-edge.deployment { stroke-dasharray: 6 4; }
-.plan-boxes { position: absolute; inset: 0; pointer-events: none; }
-.plan-column { position: absolute; border: 1px solid var(--rule-light); border-radius: 2px; background: var(--card); }
-.plan-columns {
+.plan-heading-line { gap: var(--space-4); margin-block: var(--space-3) var(--space-1); }
+.plan-heading h1 { font-size: clamp(32px, 3vw, 44px); letter-spacing: -0.04em; }
+.plan-project { padding-left: var(--space-4); border-left: 1px solid var(--rule-dark); font: var(--type-data); }
+.plan-metadata { gap: var(--space-3); font-size: 13px; color: var(--muted-dark); }
+.plan-metadata strong { color: var(--text); }
+.plan-sheet { color-scheme: light; --focus: var(--ink); background: var(--paper); color: var(--ink); border-top: 1px solid var(--accent); }
+.plan-graph, .plan-acceptance { padding: clamp(16px, 2vw, 32px); }
+.plan-graph-head { justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.plan-graph-head h2 { font-size: clamp(22px, 2vw, 30px); line-height: 1.2; letter-spacing: -0.035em; }
+.plan-progress { gap: var(--space-2); color: var(--muted-light); font: var(--type-data); }
+.plan-progress progress { appearance: none; border: 0; background: var(--rule-light); height: 4px; width: 56px; }
+.plan-progress progress::-webkit-progress-bar { background: var(--rule-light); }
+.plan-progress progress::-webkit-progress-value { background: var(--ink); }
+.plan-progress progress::-moz-progress-bar { background: var(--ink); }
+.plan-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); }
+.plan-legend li { display: flex; align-items: center; gap: var(--space-2); color: var(--muted-light); font-size: 13px; }
+.plan-legend li::before { content: ""; width: 26px; border-top: 2px solid var(--muted-light); }
+.plan-legend [data-kind="deployment"]::before { border-top-style: dashed; }
+.plan-viewport {
+  margin-top: var(--space-6);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-color: var(--muted-light) var(--paper-soft);
+}
+.plan-canvas {
+  --stage-gap: clamp(32px, 3.2vw, 52px);
   position: relative;
+  width: clamp(calc(var(--stage-count) * (9.5rem + var(--stage-gap)) - var(--stage-gap)), 100%, calc(var(--stage-count) * (16rem + var(--stage-gap)) - var(--stage-gap)));
+}
+.plan-stages { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); align-items: start; gap: var(--stage-gap); }
+.plan-stage { min-width: 0; }
+.plan-stage h3 {
   display: flex;
-  align-items: flex-start;
-  gap: 44px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--muted-light);
+  font: var(--type-data);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
-.plan-column-group { flex: none; width: 13rem; }
-.plan-tasks { display: block; margin: 0; padding: 0; list-style: none; }
-.plan-row {
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) max-content;
-  gap: var(--space-1) var(--space-3);
-  align-items: start;
-  padding: var(--space-3);
-  color: var(--ink);
+.plan-stage h3 span { text-transform: none; letter-spacing: normal; }
+.plan-stage h3 span::before { content: "· "; }
+.plan-stage-tasks { border: 1px solid var(--rule-light); border-radius: 4px; background: var(--card); }
+.plan-task { padding: var(--space-3); min-width: 0; overflow-wrap: anywhere; }
+.plan-task + .plan-task { border-top: 1px solid var(--rule-light); }
+.plan-stage-parallel h3 {
+  margin-bottom: 0;
+  padding: calc(var(--space-1) - 1px) var(--space-3) var(--space-1);
+  border: 1px solid var(--rule-light);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: var(--paper-soft);
 }
-.plan-row.waiting { color: var(--muted-light); }
-.plan-status {
+.plan-stage-parallel .plan-stage-tasks { border-radius: 0 0 4px 4px; }
+.plan-stage-parallel .plan-task { margin-inline: var(--space-3); padding-inline: 0; }
+.plan-task-ref { flex-wrap: nowrap; gap: var(--space-2); font: var(--type-data); color: var(--muted-light); }
+.plan-task-ref code { font: inherit; }
+.plan-symbol {
+  flex: none;
   display: grid;
   place-items: center;
   width: 18px;
   height: 18px;
-  margin-top: 2px;
-  border: 1px solid currentColor;
+  color: var(--ink);
+  border: 1px solid var(--muted-light);
   border-radius: 50%;
-  color: var(--muted-light);
+  font: 700 13px/1 var(--font-body);
 }
-.ready .plan-status { color: var(--ink); }
-.ready .plan-status::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.in_progress .plan-status { color: var(--ink); }
-.in_progress .plan-status::after {
-  content: "";
-  width: 9px;
-  height: 9px;
-  margin-left: -2px;
-  border-radius: 9px 0 0 9px;
-  background: currentColor;
-}
-.blocked .plan-status { color: var(--accent-detail); }
-.blocked .plan-status::after { content: ""; width: 10px; border-top: 2px solid currentColor; }
-.review .plan-status { color: var(--ink); }
-.review .plan-status::after {
-  content: "";
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: currentColor;
-  box-shadow: 5px 0 0 currentColor;
-}
-.done .plan-status { border-color: var(--ink); background: var(--ink); color: var(--card); }
-.done .plan-status::after { content: "\2713"; font-size: 11px; line-height: 1; }
-.plan-copy { display: grid; gap: 2px; min-width: 0; margin: 0; }
-.plan-title { font-size: 15px; line-height: 1.3; }
-.plan-label {
-  font: var(--type-data);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-light);
-}
-.plan-mark {
-  font: var(--type-data);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--accent-detail);
-}
-.plan-pr { font-size: 13px; text-underline-offset: 3px; }
-.plan-key { font: var(--type-data); color: var(--muted-light); }
-/* The wires are decoration: the sentence stays for screen readers at every width. */
-.plan-deps {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
+.plan-symbol[data-state="done"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.plan-symbol[data-state="in_progress"], .plan-symbol[data-state="blocked"] { background: var(--accent); border-color: var(--ink); }
+.plan-task-title { margin-block: var(--space-2) var(--space-1); color: var(--ink); font-size: 15px; font-weight: 700; line-height: 1.35; }
+.plan-task-state, .plan-proof, .plan-reveal, .plan-requirements { color: var(--muted-light); font-size: 13px; }
+.plan-proof { text-decoration: underline; }
+.plan-reveal { font-weight: 700; }
+.plan-requirements { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.plan-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.plan-wire { fill: none; stroke: var(--muted-light); stroke-width: 1.75; }
+.plan-wire[data-kind="deployment"] { stroke-dasharray: 5 4; }
+.plan-arrow { fill: var(--muted-light); }
+.plan-acceptance { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-6); border-top: 1px solid var(--rule-light); }
+.plan-acceptance h2 { color: var(--muted-light); font: var(--type-data); text-transform: uppercase; letter-spacing: 0.06em; }
+.plan-acceptance > div { min-width: 0; }
+.plan-acceptance code { color: var(--ink); font: 500 14px/1.5 var(--font-data); white-space: pre-wrap; overflow-wrap: anywhere; }
+.plan-acceptance p { margin-top: var(--space-1); color: var(--muted-light); font-size: 14px; }
+.plan-footer { margin-top: var(--space-4); }
 
 @media (max-width: 767px) {
-  .plan-scroll { overflow-x: visible; }
-  .plan-boxes, .plan-wires { display: none; }
-  .plan-columns { display: block; }
-  .plan-column-group { width: auto; }
-  .plan-column-group + .plan-column-group { margin-top: var(--space-4); }
-  .plan-row {
-    grid-template-columns: 18px minmax(0, 1fr);
-    padding: var(--space-3) 0;
-    border-top: 1px solid var(--rule-light);
-  }
-  .plan-row:first-child { padding-top: 0; border-top: 0; }
-  .plan-key { grid-column: 2; }
-  .plan-deps {
-    position: static;
-    width: auto;
-    height: auto;
-    margin: 0;
-    overflow: visible;
-    clip-path: none;
-    white-space: normal;
-    font-size: 13px;
-    color: var(--muted-light);
-  }
+  .plan-graph-head { align-items: start; }
+  .plan-progress progress { display: none; }
+  .plan-canvas { width: 100%; }
+  .plan-stages { grid-auto-flow: row; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+  .plan-wires { display: none; }
+  .plan-task-title { font-size: 16px; }
+  .plan-requirements { position: static; width: auto; height: auto; overflow: visible; clip-path: none; margin-top: var(--space-2); }
 }

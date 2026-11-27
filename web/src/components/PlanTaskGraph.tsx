@@ -1,271 +1,222 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { STATE_LABELS, type PlanEdge, type PlanNode } from '../types'
+import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { STATE_LABELS, type PlanEdge, type PlanGraph, type PlanNode } from '../types'
 
-type Props = {
-  nodes: PlanNode[]
-  edges: PlanEdge[]
-}
-
-type Placement = {
-  column: number
-  row: number
-}
-
-type Box = {
+type Props = Pick<PlanGraph, 'nodes' | 'edges'>
+type Wire = { edge: PlanEdge; path: string }
+type Port = { peerY: number; y: number }
+type MeasuredTask = {
   left: number
-  top: number
   right: number
-  bottom: number
+  firstY: number
+  lastY: number
+  stage: number
+  inputs: Port[]
+  outputs: Port[]
 }
 
-const EDGE_LABELS: Record<PlanEdge['Kind'], string> = {
+const conditions: Record<PlanEdge['Kind'], string> = {
   integration: 'Merged and verified',
   deployment: 'Deployed',
 }
 
-const EDGE_CONDITIONS: Record<PlanEdge['Kind'], string> = {
-  integration: 'merge and verification',
-  deployment: 'deployment',
+const symbols: Record<PlanNode['state'], string> = {
+  backlog: '○',
+  ready: '●',
+  in_progress: '◐',
+  blocked: '−',
+  review: '◇',
+  done: '✓',
 }
 
-const INSET = 10
-const LANE_GAP = 8
-
-/**
- * A task sits at the longest path from a task with no prerequisite, so a chain
- * reads left to right and a fan-out shares a column. Isolated tasks land in the
- * first column. The API rejects cycles; the guard only keeps a malformed graph
- * from hanging the page.
- */
-function layoutOf(nodes: PlanNode[], edges: PlanEdge[]): { placements: Map<string, Placement>; columns: number } {
-  const known = new Set(nodes.map(node => node.task_key))
-  const incoming = new Map<string, PlanEdge[]>()
+function groupTasks({ nodes, edges }: Props) {
+  const incoming = new Map(nodes.map(node => [node.task_key, new Array<PlanEdge>()]))
   for (const edge of edges) {
-    if (!known.has(edge.From) || !known.has(edge.To)) continue
-    const list = incoming.get(edge.To)
-    if (list) list.push(edge)
-    else incoming.set(edge.To, [edge])
+    if (incoming.has(edge.From)) incoming.get(edge.To)?.push(edge)
   }
 
-  const depth = new Map<string, number>()
-  const visiting = new Set<string>()
-  const resolve = (key: string): number => {
-    const cached = depth.get(key)
-    if (cached !== undefined) return cached
-    if (visiting.has(key)) return 0
-    visiting.add(key)
-    let value = 0
-    for (const edge of incoming.get(key) ?? []) {
-      value = Math.max(value, resolve(edge.From) + 1)
-    }
-    visiting.delete(key)
-    depth.set(key, value)
-    return value
+  const depths = new Map<string, number>()
+  function depth(key: string): number {
+    const known = depths.get(key)
+    if (known !== undefined) return known
+    depths.set(key, 0)
+    const parents = incoming.get(key) ?? []
+    const level = Math.max(0, ...parents.map(edge => depth(edge.From) + 1))
+    depths.set(key, level)
+    return level
   }
 
-  const used = new Map<number, number>()
-  const placements = new Map<string, Placement>()
-  let columns = 0
+  const stages: PlanNode[][] = []
   for (const node of nodes) {
-    const column = resolve(node.task_key)
-    columns = Math.max(columns, column + 1)
-    const row = used.get(column) ?? 0
-    used.set(column, row + 1)
-    placements.set(node.task_key, { column, row })
+    const index = depth(node.task_key)
+    stages[index] ??= []
+    stages[index].push(node)
   }
-  return { placements, columns: Math.max(columns, 1) }
+  return { stages, incoming }
 }
 
-function prerequisites(node: PlanNode, edges: PlanEdge[]): string {
-  const origins = edges.filter(edge => edge.To === node.task_key && edge.From !== node.task_key)
-  if (origins.length === 0) return 'No prerequisites'
-  const described = origins.map(edge => `${edge.From} (${EDGE_CONDITIONS[edge.Kind] ?? EDGE_CONDITIONS.integration})`)
-  const list =
-    described.length === 1
-      ? described[0]
-      : `${described.slice(0, -1).join(', ')} and ${described[described.length - 1]}`
-  return `Waits for ${list}`
+function routeWires(canvas: HTMLElement, edges: PlanEdge[], compact: boolean) {
+  if (compact) return { wires: [], bottom: 0 }
+  const origin = canvas.getBoundingClientRect()
+  const tasks = new Map<string, MeasuredTask>()
+  const floors = Array.from(canvas.querySelectorAll('.plan-stage'), (element, stage) => {
+    const column = element.getBoundingClientRect()
+    for (const row of element.querySelectorAll<HTMLElement>('[data-task]')) {
+      const icon = row.querySelector('.plan-symbol')?.getBoundingClientRect()
+      if (row.dataset.task && icon) {
+        tasks.set(row.dataset.task, {
+          left: column.left - origin.left,
+          right: column.right - origin.left,
+          firstY: icon.top + icon.height / 2 - origin.top,
+          lastY: row.getBoundingClientRect().bottom - origin.top - 12,
+          stage,
+          inputs: [],
+          outputs: [],
+        })
+      }
+    }
+    return column.bottom - origin.top
+  })
+  const routes = edges.flatMap(edge => {
+    const from = tasks.get(edge.From)
+    const to = tasks.get(edge.To)
+    if (!from || !to) return []
+    const output = { peerY: to.firstY, y: from.firstY }
+    const input = { peerY: from.firstY, y: to.firstY }
+    from.outputs.push(output)
+    to.inputs.push(input)
+    return [{ edge, from, to, output, input }]
+  }).sort((a, b) => a.from.stage - b.from.stage || a.from.firstY - b.from.firstY || a.to.stage - b.to.stage)
+
+  for (const task of tasks.values()) {
+    for (const ports of [task.inputs, task.outputs]) {
+      if (ports.length < 2) continue
+      ports.sort((a, b) => a.peerY - b.peerY)
+      const spacing = Math.min(32, (task.lastY - task.firstY) / (ports.length - 1))
+      ports.forEach((port, index) => { port.y = task.firstY + index * spacing })
+    }
+  }
+
+  const ends: number[] = []
+  function lane(start: number, end: number) {
+    const free = ends.findIndex(last => last < start)
+    const index = free < 0 ? ends.length : free
+    ends[index] = end
+    return index
+  }
+
+  const wires: Wire[] = routes.map(({ edge, from, to, output, input }) => {
+    const y1 = output.y
+    const y2 = input.y
+    const x1 = from.right
+    const x2 = to.left
+    if (to.stage === from.stage + 1) {
+      const middle = (x1 + x2) / 2
+      return { edge, path: `M ${x1} ${y1} C ${middle} ${y1} ${middle} ${y2} ${x2} ${y2}` }
+    }
+
+    const track = lane(from.stage, to.stage)
+    const floor = Math.max(y1, y2, ...floors.slice(from.stage + 1, to.stage).map(bottom => bottom + 16)) + track * 9
+    const out = x1 + 12
+    const back = x2 - 12
+    return {
+      edge,
+      path: `M ${x1} ${y1} C ${out} ${y1} ${out} ${floor} ${out + 10} ${floor} H ${back - 10} C ${back} ${floor} ${back} ${y2} ${x2} ${y2}`,
+    }
+  })
+  return { wires, bottom: ends.length ? ends.length * 9 + 16 : 0 }
+}
+
+function TaskRow({ node, parents }: { node: PlanNode; parents: PlanEdge[] }) {
+  const waiting = node.waiting_on.length > 0
+  return (
+    <li data-task={node.task_key} className="plan-task">
+      <div className="plan-task-ref">
+        <span className="plan-symbol" data-state={node.state} aria-hidden="true">{symbols[node.state]}</span>
+        <code>{node.task_key}</code>
+      </div>
+      <p className="plan-task-title">{node.title}</p>
+      <p className="plan-task-state">
+        {STATE_LABELS[node.state]}{waiting && ' · Waiting'}
+      </p>
+      {node.reveals && <p className="plan-reveal">Reveals the change</p>}
+      {node.proof && <a className="plan-proof" href={node.proof.pr_url} target="_blank" rel="noreferrer">Merged PR ↗</a>}
+      <div className="plan-requirements">
+        {parents.length === 0 && <p>No prerequisites</p>}
+        {parents.map(edge => (
+          <p key={edge.From + edge.Kind}>
+            {node.waiting_on.includes(edge.From) ? 'Waiting for' : 'Requires'} {edge.From} · {conditions[edge.Kind]}
+          </p>
+        ))}
+      </div>
+    </li>
+  )
 }
 
 export function PlanTaskGraph({ nodes, edges }: Props) {
-  const canvasRef = useRef<HTMLDivElement | null>(null)
-  const wiresRef = useRef<SVGSVGElement | null>(null)
-  const boxesRef = useRef<HTMLDivElement | null>(null)
-  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 768px)').matches)
-
-  const layout = useMemo(() => layoutOf(nodes, edges), [nodes, edges])
-  const groups = useMemo(() => {
-    const byColumn = new Map<number, PlanNode[]>()
-    for (const node of nodes) {
-      const column = layout.placements.get(node.task_key)?.column ?? 0
-      const list = byColumn.get(column)
-      if (list) list.push(node)
-      else byColumn.set(column, [node])
-    }
-    return [...byColumn.entries()].sort(([a], [b]) => a - b).map(([, list]) => list)
-  }, [layout, nodes])
-  const kinds = useMemo(
-    () => [...new Set(edges.map(edge => edge.Kind))].filter(kind => kind in EDGE_LABELS),
-    [edges],
-  )
-
-  useEffect(() => {
-    const query = window.matchMedia('(min-width: 768px)')
-    const sync = () => setWide(query.matches)
-    sync()
-    query.addEventListener('change', sync)
-    return () => query.removeEventListener('change', sync)
-  }, [])
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    const wires = wiresRef.current
-    const boxes = boxesRef.current
-    if (!canvas || !wires || !boxes) return
-    if (!wide) {
-      wires.replaceChildren()
-      boxes.replaceChildren()
-      canvas.style.paddingBottom = ''
-      return
-    }
-
-    const origin = canvas.getBoundingClientRect()
-    const rows = new Map<string, DOMRect>()
-    for (const row of canvas.querySelectorAll<HTMLElement>('.plan-row')) {
-      const key = row.dataset.key
-      if (key) rows.set(key, row.getBoundingClientRect())
-    }
-
-    // One container per dependency depth, drawn around the rows it holds.
-    const grouped = new Map<number, DOMRect[]>()
-    for (const [key, rect] of rows) {
-      const column = layout.placements.get(key)?.column ?? 0
-      const list = grouped.get(column)
-      if (list) list.push(rect)
-      else grouped.set(column, [rect])
-    }
-    const columnBoxes = new Map<number, Box>()
-    const drawn: HTMLElement[] = []
-    for (const [column, rects] of grouped) {
-      const left = Math.min(...rects.map(rect => rect.left)) - INSET
-      const top = Math.min(...rects.map(rect => rect.top)) - INSET
-      const right = Math.max(...rects.map(rect => rect.right)) + INSET
-      const bottom = Math.max(...rects.map(rect => rect.bottom)) + INSET
-      const box = document.createElement('div')
-      box.className = 'plan-column'
-      box.style.left = `${left - origin.left}px`
-      box.style.top = `${top - origin.top}px`
-      box.style.width = `${right - left}px`
-      box.style.height = `${bottom - top}px`
-      drawn.push(box)
-      columnBoxes.set(column, { left, top, right, bottom })
-    }
-    boxes.replaceChildren(...drawn)
-
-    // Edges leave the container of the source and enter the one of the target,
-    // so both ends hide under the box border instead of stopping mid-air.
-    const paths: SVGPathElement[] = []
-    let lanes = 0
-    for (const edge of edges) {
-      const fromColumn = layout.placements.get(edge.From)?.column
-      const toColumn = layout.placements.get(edge.To)?.column
-      if (fromColumn === undefined || toColumn === undefined) continue
-      const from = columnBoxes.get(fromColumn)
-      const to = columnBoxes.get(toColumn)
-      const source = rows.get(edge.From)
-      const target = rows.get(edge.To)
-      if (!from || !to || !source || !target) continue
-
-      const x1 = from.right - origin.left
-      const x2 = to.left - origin.left
-      const y1 = source.top - origin.top + source.height / 2
-      const y2 = target.top - origin.top + target.height / 2
-      let d: string
-      if (toColumn - fromColumn <= 1) {
-        const middle = x1 + (x2 - x1) / 2
-        d = `M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}`
-      } else {
-        // A long edge goes round the containers it skips, then comes back up.
-        let floor = Math.max(y1, y2)
-        for (let column = fromColumn + 1; column < toColumn; column += 1) {
-          const skipped = columnBoxes.get(column)
-          if (skipped) floor = Math.max(floor, skipped.bottom - origin.top)
-        }
-        const lane = floor + 12 + lanes * LANE_GAP
-        lanes += 1
-        const out = x1 + 14
-        const back = x2 - 14
-        d =
-          `M ${x1} ${y1} C ${out} ${y1}, ${out} ${lane}, ${out + LANE_GAP} ${lane}` +
-          ` L ${back - LANE_GAP} ${lane} C ${back} ${lane}, ${back} ${y2}, ${x2} ${y2}`
-      }
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-      path.setAttribute('class', `plan-edge ${edge.Kind}`)
-      path.setAttribute('d', d)
-      paths.push(path)
-    }
-    wires.replaceChildren(...paths)
-    wires.setAttribute('width', String(Math.ceil(canvas.scrollWidth)))
-    wires.setAttribute('height', String(Math.ceil(canvas.scrollHeight)))
-    canvas.style.paddingBottom = lanes > 0 ? `${lanes * LANE_GAP + 16}px` : ''
-  }, [edges, layout, wide])
+  const { stages, incoming } = useMemo(() => groupTasks({ nodes, edges }), [nodes, edges])
+  const kinds = [...new Set(edges.map(edge => edge.Kind))]
+  const canvasRef = useRef<HTMLOListElement>(null)
+  const marker = useId()
+  const [drawing, setDrawing] = useState<{ wires: Wire[]; bottom: number }>({ wires: [], bottom: 0 })
+  const [scrollable, setScrollable] = useState(false)
 
   useLayoutEffect(() => {
-    draw()
     const canvas = canvasRef.current
-    if (!canvas) return
-    const observer = new ResizeObserver(() => draw())
+    const viewport = canvas?.closest<HTMLElement>('.plan-viewport')
+    if (!canvas || !viewport) return
+    const measure = () => {
+      const compact = getComputedStyle(canvas).gridAutoFlow === 'row'
+      setDrawing(routeWires(canvas, edges, compact))
+      setScrollable(canvas.offsetWidth > viewport.clientWidth)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(viewport)
     observer.observe(canvas)
-    void document.fonts.ready.then(() => draw())
+    for (const row of canvas.querySelectorAll('[data-task]')) observer.observe(row)
     return () => observer.disconnect()
-  }, [draw])
+  }, [stages, edges])
 
+  const done = nodes.filter(node => node.state === 'done').length
+  const sizing: CSSProperties & { '--stage-count': number } = { '--stage-count': stages.length }
   return (
-    <div className="plan-graph">
+    <section className="plan-graph" aria-labelledby="plan-graph-title">
+      <header className="plan-graph-head">
+        <h2 id="plan-graph-title">Task dependencies</h2>
+        <div className="plan-progress">
+          <span>{done} of {nodes.length} done</span>
+          <progress value={done} max={nodes.length || 1} aria-label="Completed tasks" />
+        </div>
+      </header>
       {kinds.length > 0 && (
-        <p className="plan-legend">
-          {kinds.map(kind => (
-            <span key={kind} className={`plan-legend-item ${kind}`}>
-              {EDGE_LABELS[kind]}
-            </span>
-          ))}
-        </p>
+        <ul className="plan-legend" aria-label="Dependency types">
+          {kinds.map(kind => <li key={kind} data-kind={kind}>{conditions[kind]}</li>)}
+        </ul>
       )}
-      <div className="plan-scroll" role="region" aria-label="Task dependencies" tabIndex={wide ? 0 : -1}>
-        <div className="plan-canvas" ref={canvasRef}>
-          <svg className="plan-wires" aria-hidden="true" focusable="false" ref={wiresRef} />
-          <div className="plan-boxes" aria-hidden="true" ref={boxesRef} />
-          <ol className="plan-columns" aria-label="Tasks grouped by dependency depth">
-            {groups.map((group, index) => (
-              <li className="plan-column-group" key={index}>
-                <ol className="plan-tasks">
-                  {group.map(node => (
-                    <li
-                      key={node.task_key}
-                      data-key={node.task_key}
-                      className={`plan-row ${node.state}${node.waiting_on.length > 0 ? ' waiting' : ''}`}
-                    >
-                      <span className="plan-status" aria-hidden="true" />
-                      <p className="plan-copy">
-                        <span className="plan-title">{node.title}</span>
-                        <span className="plan-label">{STATE_LABELS[node.state]}</span>
-                        {node.reveals && <span className="plan-mark">Reveals the change</span>}
-                        {node.proof && (
-                          <a className="plan-pr" href={node.proof.pr_url} target="_blank" rel="noreferrer">
-                            Pull request
-                          </a>
-                        )}
-                        <span className="plan-deps">{prerequisites(node, edges)}</span>
-                      </p>
-                      <code className="plan-key">{node.task_key}</code>
-                    </li>
-                  ))}
+      <div className="plan-viewport" role="region" aria-label="Dependency graph" tabIndex={scrollable ? 0 : undefined}>
+        <div className="plan-canvas" style={{ ...sizing, paddingBottom: drawing.bottom }}>
+          <ol className="plan-stages" ref={canvasRef} aria-label="Stages in dependency order">
+            {stages.map((stage, index) => (
+              <li className={stage.length > 1 ? 'plan-stage plan-stage-parallel' : 'plan-stage'} key={index}>
+                <h3>Stage {String(index + 1).padStart(2, '0')}{stage.length > 1 && <span>{stage.length} parallel</span>}</h3>
+                <ol className="plan-stage-tasks" aria-label={`Stage ${index + 1} tasks`}>
+                  {stage.map(node => <TaskRow key={node.task_key} node={node} parents={incoming.get(node.task_key) ?? []} />)}
                 </ol>
               </li>
             ))}
           </ol>
+          <svg className="plan-wires" aria-hidden="true" focusable="false">
+            <defs>
+              <marker id={marker} viewBox="0 0 6 8" refX="6" refY="4" markerUnits="userSpaceOnUse" markerWidth="6" markerHeight="8" orient="auto">
+                <path className="plan-arrow" d="M0 0 6 4 0 8Z" />
+              </marker>
+            </defs>
+            {drawing.wires.map(({ edge, path }) => (
+              <path key={edge.From + '/' + edge.To + '/' + edge.Kind} className="plan-wire" data-kind={edge.Kind} d={path} markerEnd={`url(#${marker})`} />
+            ))}
+          </svg>
         </div>
       </div>
-    </div>
+    </section>
   )
 }
