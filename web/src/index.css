@@ -582,19 +582,15 @@ h4 { font-size: 14px; }
 }
 .plan-stage h3 span { text-transform: none; letter-spacing: normal; }
 .plan-stage h3 span::before { content: "· "; }
-.plan-stage-tasks { border: 1px solid var(--rule-light); border-radius: 4px; background: var(--card); }
-.plan-task { padding: var(--space-3); min-width: 0; overflow-wrap: anywhere; }
-.plan-task + .plan-task { border-top: 1px solid var(--rule-light); }
-.plan-stage-parallel h3 {
-  margin-bottom: 0;
-  padding: calc(var(--space-1) - 1px) var(--space-3) var(--space-1);
+.plan-stage-tasks { display: grid; gap: var(--space-4); }
+.plan-task {
+  padding: var(--space-3);
+  min-width: 0;
+  overflow-wrap: anywhere;
   border: 1px solid var(--rule-light);
-  border-bottom: 0;
-  border-radius: 4px 4px 0 0;
-  background: var(--paper-soft);
+  border-radius: 7px;
+  background: var(--card);
 }
-.plan-stage-parallel .plan-stage-tasks { border-radius: 0 0 4px 4px; }
-.plan-stage-parallel .plan-task { margin-inline: var(--space-3); padding-inline: 0; }
 .plan-task-ref { flex-wrap: nowrap; gap: var(--space-2); font: var(--type-data); color: var(--muted-light); }
 .plan-task-ref code { font: inherit; }
 .plan-symbol {
@@ -616,9 +612,9 @@ h4 { font-size: 14px; }
 .plan-reveal { font-weight: 700; }
 .plan-requirements { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .plan-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.plan-wire { fill: none; stroke: var(--muted-light); stroke-width: 1.75; }
+.plan-wire { fill: none; stroke: var(--muted-light); stroke-width: 3; }
 .plan-wire[data-kind="deployment"] { stroke-dasharray: 5 4; }
-.plan-arrow { fill: var(--muted-light); }
+.plan-arrow, .plan-junction { fill: var(--muted-light); }
 .plan-acceptance { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-6); border-top: 1px solid var(--rule-light); }
 .plan-acceptance h2 { color: var(--muted-light); font: var(--type-data); text-transform: uppercase; letter-spacing: 0.06em; }
 .plan-acceptance > div { min-width: 0; }

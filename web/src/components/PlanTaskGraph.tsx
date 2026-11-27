@@ -1,17 +1,27 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { STATE_LABELS, type PlanEdge, type PlanGraph, type PlanNode } from '../types'
 
 type Props = Pick<PlanGraph, 'nodes' | 'edges'>
-type Wire = { edge: PlanEdge; path: string }
-type Port = { peerY: number; y: number }
+type Point = { x: number; y: number }
+type Wire = { edge: PlanEdge; path: string; head?: Point }
+type Junction = Point & { task: string; side: 'input' | 'output'; cardX: number; kind: PlanEdge['Kind']; head?: Point }
+type Drawing = { wires: Wire[]; junctions: Junction[]; bottom: number }
 type MeasuredTask = {
   left: number
   right: number
-  firstY: number
-  lastY: number
+  y: number
   stage: number
-  inputs: Port[]
-  outputs: Port[]
+  inputs: PlanEdge[]
+  outputs: PlanEdge[]
+}
+
+// The stroke stops short of the card and a filled triangle covers the last
+// stretch, so the tip is a point and no line shows under it.
+const HEAD = 11
+const HEAD_HALF = 6
+
+function arrowPoints(tip: Point) {
+  return `${tip.x},${tip.y} ${tip.x - HEAD},${tip.y - HEAD_HALF} ${tip.x - HEAD},${tip.y + HEAD_HALF}`
 }
 
 const conditions: Record<PlanEdge['Kind'], string> = {
@@ -54,76 +64,110 @@ function groupTasks({ nodes, edges }: Props) {
   return { stages, incoming }
 }
 
-function routeWires(canvas: HTMLElement, edges: PlanEdge[], compact: boolean) {
-  if (compact) return { wires: [], bottom: 0 }
+function roundedPath(start: Point, bends: Point[], end: Point) {
+  const points = [start]
+  for (const point of [...bends, end]) {
+    const last = points[points.length - 1]
+    if (point.x === last.x && point.y === last.y) continue
+    const previous = points[points.length - 2]
+    if (previous && ((previous.x === last.x && last.x === point.x) || (previous.y === last.y && last.y === point.y))) {
+      points.pop()
+    }
+    points.push(point)
+  }
+
+  let path = `M ${start.x} ${start.y}`
+  for (let i = 1; i < points.length; i++) {
+    const previous = points[i - 1]
+    const corner = points[i]
+    const dx = corner.x - previous.x
+    const dy = corner.y - previous.y
+    const next = points[i + 1]
+    if (!next) return path + (dx ? ` H ${corner.x}` : ` V ${corner.y}`)
+    const nx = next.x - corner.x
+    const ny = next.y - corner.y
+    const r = Math.min(8, (Math.abs(dx) + Math.abs(dy)) / 2, (Math.abs(nx) + Math.abs(ny)) / 2)
+    path += dx ? ` H ${corner.x - Math.sign(dx) * r}` : ` V ${corner.y - Math.sign(dy) * r}`
+    const sweep = dx * ny - dy * nx > 0 ? 1 : 0
+    path += ` A ${r} ${r} 0 0 ${sweep} ${corner.x + Math.sign(nx) * r} ${corner.y + Math.sign(ny) * r}`
+  }
+  return path
+}
+
+function routeWires(canvas: HTMLElement, edges: PlanEdge[], compact: boolean): Drawing {
+  if (compact) return { wires: [], junctions: [], bottom: 0 }
   const origin = canvas.getBoundingClientRect()
   const tasks = new Map<string, MeasuredTask>()
-  const floors = Array.from(canvas.querySelectorAll('.plan-stage'), (element, stage) => {
-    const column = element.getBoundingClientRect()
+  const columns = Array.from(canvas.querySelectorAll('.plan-stage'), (element, stage) => {
     for (const row of element.querySelectorAll<HTMLElement>('[data-task]')) {
       const icon = row.querySelector('.plan-symbol')?.getBoundingClientRect()
       if (row.dataset.task && icon) {
+        const card = row.getBoundingClientRect()
         tasks.set(row.dataset.task, {
-          left: column.left - origin.left,
-          right: column.right - origin.left,
-          firstY: icon.top + icon.height / 2 - origin.top,
-          lastY: row.getBoundingClientRect().bottom - origin.top - 12,
+          left: card.left - origin.left,
+          right: card.right - origin.left,
+          y: icon.top + icon.height / 2 - origin.top,
           stage,
           inputs: [],
           outputs: [],
         })
       }
     }
-    return column.bottom - origin.top
+    return element.getBoundingClientRect()
   })
   const routes = edges.flatMap(edge => {
     const from = tasks.get(edge.From)
     const to = tasks.get(edge.To)
-    if (!from || !to) return []
-    const output = { peerY: to.firstY, y: from.firstY }
-    const input = { peerY: from.firstY, y: to.firstY }
-    from.outputs.push(output)
-    to.inputs.push(input)
-    return [{ edge, from, to, output, input }]
-  }).sort((a, b) => a.from.stage - b.from.stage || a.from.firstY - b.from.firstY || a.to.stage - b.to.stage)
+    if (!from || !to || to.stage <= from.stage) return []
+    from.outputs.push(edge)
+    to.inputs.push(edge)
+    return [{ edge, from, to }]
+  }).sort((a, b) => a.from.stage - b.from.stage || a.to.stage - b.to.stage)
 
-  for (const task of tasks.values()) {
-    for (const ports of [task.inputs, task.outputs]) {
-      if (ports.length < 2) continue
-      ports.sort((a, b) => a.peerY - b.peerY)
-      const spacing = Math.min(32, (task.lastY - task.firstY) / (ports.length - 1))
-      ports.forEach((port, index) => { port.y = task.firstY + index * spacing })
+  const gap = columns.length > 1 ? columns[1].left - columns[0].right : 0
+  // Halfway between two cards: the junction dot sits at the centre of the run,
+  // so the branch leaves from the middle of the shorter line, not from its end.
+  const offset = gap / 2
+  const junctions: Junction[] = []
+  for (const [task, { left, right, y, inputs, outputs }] of tasks) {
+    for (const side of ['input', 'output'] as const) {
+      const group = side === 'input' ? inputs : outputs
+      if (group.length < 2) continue
+      const kind = group.every(edge => edge.Kind === 'deployment') ? 'deployment' : 'integration'
+      const cardX = side === 'input' ? left : right
+      const x = side === 'input' ? left - offset : right + offset
+      junctions.push({ task, side, cardX, x, y, kind, head: side === 'input' ? { x: cardX, y } : undefined })
     }
   }
 
-  const ends: number[] = []
-  function lane(start: number, end: number) {
-    const free = ends.findIndex(last => last < start)
-    const index = free < 0 ? ends.length : free
-    ends[index] = end
-    return index
-  }
-
-  const wires: Wire[] = routes.map(({ edge, from, to, output, input }) => {
-    const y1 = output.y
-    const y2 = input.y
-    const x1 = from.right
-    const x2 = to.left
-    if (to.stage === from.stage + 1) {
-      const middle = (x1 + x2) / 2
-      return { edge, path: `M ${x1} ${y1} C ${middle} ${y1} ${middle} ${y2} ${x2} ${y2}` }
+  const laneEnds: number[] = []
+  let bottom = 0
+  const wires = routes.map(({ edge, from, to }) => {
+    const split = from.outputs.length > 1
+    const join = to.inputs.length > 1
+    const out = from.right + offset
+    const back = to.left - offset
+    const start = { x: split ? out : from.right, y: from.y }
+    const end = { x: join ? back : to.left - HEAD, y: to.y }
+    let bends: Point[]
+    if (to.stage === from.stage + 1 && !(split && join)) {
+      const turn = split ? out : join ? back : (from.right + to.left) / 2
+      bends = [{ x: turn, y: from.y }, { x: turn, y: to.y }]
+    } else {
+      let y = (from.y + to.y) / 2
+      if (to.stage > from.stage + 1) {
+        const free = laneEnds.findIndex(last => last < from.stage)
+        const lane = free < 0 ? laneEnds.length : free
+        laneEnds[lane] = to.stage
+        const obstacles = columns.slice(from.stage + 1, to.stage)
+        y = Math.max(from.y, to.y, ...obstacles.map(rect => rect.bottom - origin.top + 16)) + lane * 12
+        bottom = Math.max(bottom, y + 4 - origin.height)
+      }
+      bends = [{ x: out, y: from.y }, { x: out, y }, { x: back, y }, { x: back, y: to.y }]
     }
-
-    const track = lane(from.stage, to.stage)
-    const floor = Math.max(y1, y2, ...floors.slice(from.stage + 1, to.stage).map(bottom => bottom + 16)) + track * 9
-    const out = x1 + 12
-    const back = x2 - 12
-    return {
-      edge,
-      path: `M ${x1} ${y1} C ${out} ${y1} ${out} ${floor} ${out + 10} ${floor} H ${back - 10} C ${back} ${floor} ${back} ${y2} ${x2} ${y2}`,
-    }
+    return { edge, path: roundedPath(start, bends, end), head: join ? undefined : { x: to.left, y: to.y } }
   })
-  return { wires, bottom: ends.length ? ends.length * 9 + 16 : 0 }
+  return { wires, junctions, bottom }
 }
 
 function TaskRow({ node, parents }: { node: PlanNode; parents: PlanEdge[] }) {
@@ -156,8 +200,7 @@ export function PlanTaskGraph({ nodes, edges }: Props) {
   const { stages, incoming } = useMemo(() => groupTasks({ nodes, edges }), [nodes, edges])
   const kinds = [...new Set(edges.map(edge => edge.Kind))]
   const canvasRef = useRef<HTMLOListElement>(null)
-  const marker = useId()
-  const [drawing, setDrawing] = useState<{ wires: Wire[]; bottom: number }>({ wires: [], bottom: 0 })
+  const [drawing, setDrawing] = useState<Drawing>({ wires: [], junctions: [], bottom: 0 })
   const [scrollable, setScrollable] = useState(false)
 
   useLayoutEffect(() => {
@@ -206,13 +249,19 @@ export function PlanTaskGraph({ nodes, edges }: Props) {
             ))}
           </ol>
           <svg className="plan-wires" aria-hidden="true" focusable="false">
-            <defs>
-              <marker id={marker} viewBox="0 0 6 8" refX="6" refY="4" markerUnits="userSpaceOnUse" markerWidth="6" markerHeight="8" orient="auto">
-                <path className="plan-arrow" d="M0 0 6 4 0 8Z" />
-              </marker>
-            </defs>
             {drawing.wires.map(({ edge, path }) => (
-              <path key={edge.From + '/' + edge.To + '/' + edge.Kind} className="plan-wire" data-kind={edge.Kind} d={path} markerEnd={`url(#${marker})`} />
+              <path key={edge.From + '/' + edge.To + '/' + edge.Kind} className="plan-wire" data-kind={edge.Kind} d={path} />
+            ))}
+            {drawing.wires.map(({ edge, head }) =>
+              head ? <polygon key={`head/${edge.From}/${edge.To}`} className="plan-arrow" points={arrowPoints(head)} /> : null,
+            )}
+            {drawing.junctions.map(({ task, side, x, y, cardX, kind, head }) => (
+              <g key={task + '/' + side}>
+                <line className="plan-wire" data-kind={kind} x1={side === 'input' ? x : cardX} x2={side === 'input' ? cardX - HEAD : x}
+                  y1={y} y2={y} />
+                <circle className="plan-junction" cx={x} cy={y} r="4.5" />
+                {head && <polygon className="plan-arrow" points={arrowPoints(head)} />}
+              </g>
             ))}
           </svg>
         </div>
