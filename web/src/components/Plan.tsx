@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, ApiError } from '../api'
 import { formatDateTime, isoDate } from '../dates'
-import { STATE_LABELS, type PlanGraph } from '../types'
+import type { PlanGraph } from '../types'
+import { PlanTaskGraph } from './PlanTaskGraph'
 
 const PLAN_STATE_LABELS: Record<PlanGraph['state'], string> = {
   active: 'Running',
@@ -100,34 +101,7 @@ export function PlanPage({ planID, onSessionExpired }: Props) {
             <p className="propuesta-criterios">
               {done} of {plan.nodes.length} tasks done.
             </p>
-            <ol className="propuesta-tareas">
-              {plan.nodes.map(node => (
-                <li className="propuesta-tarea" key={node.task_key}>
-                  <p className="propuesta-titulo">
-                    <code className="propuesta-clave">{node.task_key}</code>{' '}
-                    <strong>{node.title}</strong>
-                    {node.reveals && <span className="propuesta-marca">reveals the change</span>}
-                  </p>
-                  <p className="plan-tarea-estado">
-                    <span className={`estado-tarea estado-${node.state}`}>
-                      {STATE_LABELS[node.state]}
-                    </span>
-                    {node.state === 'backlog' && node.waiting_on.length > 0 && (
-                      <span className="dato">
-                        Waiting for {joinKeys(node.waiting_on)} before it can start
-                      </span>
-                    )}
-                    {node.proof && (
-                      <span className="dato">
-                        <a href={node.proof.pr_url} target="_blank" rel="noreferrer">
-                          Pull request
-                        </a>
-                      </span>
-                    )}
-                  </p>
-                </li>
-              ))}
-            </ol>
+            <PlanTaskGraph nodes={plan.nodes} edges={plan.edges} />
           </div>
 
           <div className="propuesta-pie">
@@ -138,9 +112,4 @@ export function PlanPage({ planID, onSessionExpired }: Props) {
       </section>
     </main>
   )
-}
-
-function joinKeys(keys: string[]): string {
-  if (keys.length <= 1) return keys.join('')
-  return `${keys.slice(0, -1).join(', ')} and ${keys[keys.length - 1]}`
 }

@@ -530,3 +530,135 @@ h4 { font-size: 14px; }
   .propuesta-pie p { margin-bottom: var(--space-3); }
   .propuesta-pie a { display: inline-block; min-height: 44px; margin-right: var(--space-3); }
 }
+
+/* Plan graph: one container per dependency depth, rows inside, curved wires. */
+.plan-graph { min-width: 0; }
+.plan-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-3);
+  font: var(--type-data);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-light);
+}
+.plan-legend-item { display: inline-flex; align-items: center; gap: var(--space-2); }
+.plan-legend-item::before { content: ""; width: 24px; border-top: 2px solid var(--muted-light); }
+.plan-legend-item.deployment::before { border-top-style: dashed; }
+.plan-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+.plan-scroll:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.plan-canvas { position: relative; display: inline-block; min-width: 100%; }
+.plan-wires { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.plan-edge { fill: none; stroke: var(--muted-light); stroke-width: 2; stroke-linecap: round; }
+.plan-edge.deployment { stroke-dasharray: 6 4; }
+.plan-boxes { position: absolute; inset: 0; pointer-events: none; }
+.plan-column { position: absolute; border: 1px solid var(--rule-light); border-radius: 2px; background: var(--card); }
+.plan-columns {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 44px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.plan-column-group { flex: none; width: 13rem; }
+.plan-tasks { display: block; margin: 0; padding: 0; list-style: none; }
+.plan-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) max-content;
+  gap: var(--space-1) var(--space-3);
+  align-items: start;
+  padding: var(--space-3);
+  color: var(--ink);
+}
+.plan-row.waiting { color: var(--muted-light); }
+.plan-status {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--muted-light);
+}
+.ready .plan-status { color: var(--ink); }
+.ready .plan-status::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.in_progress .plan-status { color: var(--ink); }
+.in_progress .plan-status::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin-left: -2px;
+  border-radius: 9px 0 0 9px;
+  background: currentColor;
+}
+.blocked .plan-status { color: var(--accent-detail); }
+.blocked .plan-status::after { content: ""; width: 10px; border-top: 2px solid currentColor; }
+.review .plan-status { color: var(--ink); }
+.review .plan-status::after {
+  content: "";
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 5px 0 0 currentColor;
+}
+.done .plan-status { border-color: var(--ink); background: var(--ink); color: var(--card); }
+.done .plan-status::after { content: "\2713"; font-size: 11px; line-height: 1; }
+.plan-copy { display: grid; gap: 2px; min-width: 0; margin: 0; }
+.plan-title { font-size: 15px; line-height: 1.3; }
+.plan-label {
+  font: var(--type-data);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-light);
+}
+.plan-mark {
+  font: var(--type-data);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-detail);
+}
+.plan-pr { font-size: 13px; text-underline-offset: 3px; }
+.plan-key { font: var(--type-data); color: var(--muted-light); }
+/* The wires are decoration: the sentence stays for screen readers at every width. */
+.plan-deps {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 767px) {
+  .plan-scroll { overflow-x: visible; }
+  .plan-boxes, .plan-wires { display: none; }
+  .plan-columns { display: block; }
+  .plan-column-group { width: auto; }
+  .plan-column-group + .plan-column-group { margin-top: var(--space-4); }
+  .plan-row {
+    grid-template-columns: 18px minmax(0, 1fr);
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--rule-light);
+  }
+  .plan-row:first-child { padding-top: 0; border-top: 0; }
+  .plan-key { grid-column: 2; }
+  .plan-deps {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+    font-size: 13px;
+    color: var(--muted-light);
+  }
+}
